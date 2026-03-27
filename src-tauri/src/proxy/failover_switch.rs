@@ -13,6 +13,8 @@ use crate::ui_runtime::UiAppHandle;
 use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::Arc;
+#[cfg(feature = "desktop")]
+use tauri::{Emitter, Manager};
 use tokio::sync::RwLock;
 
 /// 故障转移切换管理器

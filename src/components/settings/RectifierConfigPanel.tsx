@@ -185,7 +185,9 @@ export function RectifierConfigPanel() {
                     !optimizerConfig.enabled || !optimizerConfig.cacheInjection
                   }
                   onChange={(e) =>
-                    handleOptimizerChange({ cacheTtl: e.target.value })
+                    handleOptimizerChange({
+                      cacheTtl: e.target.value as OptimizerConfig["cacheTtl"],
+                    })
                   }
                 >
                   <option value="5m">

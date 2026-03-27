@@ -26,6 +26,10 @@ export interface WebDavSyncResult {
   status: string;
 }
 
+export interface EmptyRemoteSnapshotInfo {
+  empty: true;
+}
+
 function buildExportStamp(date = new Date()): string {
   return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}_${String(date.getHours()).padStart(2, "0")}${String(date.getMinutes()).padStart(2, "0")}${String(date.getSeconds()).padStart(2, "0")}`;
 }
@@ -216,7 +220,9 @@ export const settingsApi = {
     });
   },
 
-  async webdavSyncFetchRemoteInfo(): Promise<RemoteSnapshotInfo | null> {
+  async webdavSyncFetchRemoteInfo(): Promise<
+    RemoteSnapshotInfo | EmptyRemoteSnapshotInfo
+  > {
     return await invoke("webdav_sync_fetch_remote_info");
   },
 
@@ -303,13 +309,14 @@ export interface RectifierConfig {
 
 export interface OptimizerConfig {
   enabled: boolean;
-  effort: "low" | "medium" | "high";
+  thinkingOptimizer: boolean;
+  cacheInjection: boolean;
+  cacheTtl: "5m" | "1h";
 }
 
 export interface LogConfig {
   enabled: boolean;
-  maxFiles?: number;
-  maxFileSizeMb?: number;
+  level: "error" | "warn" | "info" | "debug" | "trace";
 }
 
 export interface BackupEntry {

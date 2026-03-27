@@ -1,8 +1,11 @@
 #![allow(non_snake_case)]
 
 #[cfg(feature = "desktop")]
+mod auth;
+#[cfg(feature = "desktop")]
 mod config;
 #[cfg(feature = "desktop")]
+mod copilot;
 mod deeplink;
 #[cfg(feature = "desktop")]
 mod env;
@@ -32,6 +35,7 @@ pub mod skill;
 mod stream_check;
 #[cfg(feature = "desktop")]
 mod sync_support;
+
 mod usage;
 #[cfg(feature = "desktop")]
 mod webdav_sync;
@@ -39,8 +43,11 @@ mod webdav_sync;
 mod workspace;
 
 #[cfg(feature = "desktop")]
+pub use auth::*;
+#[cfg(feature = "desktop")]
 pub use config::*;
 #[cfg(feature = "desktop")]
+pub use copilot::*;
 pub use deeplink::*;
 #[cfg(feature = "desktop")]
 pub use env::*;

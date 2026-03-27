@@ -30,3 +30,6 @@ flatpak-repo/
 .spec-workflow/
 .ace-tool/
 .run/web
+copilot-api
+.history
+CODEBUDDY.md

@@ -24,6 +24,7 @@ export interface PresetTheme {
 
 export interface ProviderPreset {
   name: string;
+  nameKey?: string; // i18n key for localized display name
   websiteUrl: string;
   // 新增：第三方/聚合等可单独配置获取 API Key 的链接
   apiKeyUrl?: string;
@@ -49,6 +50,13 @@ export interface ProviderPreset {
   // - "openai_chat": OpenAI Chat Completions 格式，需要格式转换
   // - "openai_responses": OpenAI Responses API 格式，需要格式转换
   apiFormat?: "anthropic" | "openai_chat" | "openai_responses";
+
+  // 供应商类型标识（用于特殊供应商检测）
+  // - "github_copilot": GitHub Copilot 供应商（需要 OAuth 认证）
+  providerType?: "github_copilot";
+
+  // 是否需要 OAuth 认证（而非 API Key）
+  requiresOAuth?: boolean;
 }
 
 export const providerPresets: ProviderPreset[] = [
@@ -271,10 +279,10 @@ export const providerPresets: ProviderPreset[] = [
         ANTHROPIC_AUTH_TOKEN: "",
         API_TIMEOUT_MS: "3000000",
         CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: 1,
-        ANTHROPIC_MODEL: "MiniMax-M2.5",
-        ANTHROPIC_DEFAULT_SONNET_MODEL: "MiniMax-M2.5",
-        ANTHROPIC_DEFAULT_OPUS_MODEL: "MiniMax-M2.5",
-        ANTHROPIC_DEFAULT_HAIKU_MODEL: "MiniMax-M2.5",
+        ANTHROPIC_MODEL: "MiniMax-M2.7",
+        ANTHROPIC_DEFAULT_SONNET_MODEL: "MiniMax-M2.7",
+        ANTHROPIC_DEFAULT_OPUS_MODEL: "MiniMax-M2.7",
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: "MiniMax-M2.7",
       },
     },
     category: "cn_official",
@@ -297,10 +305,10 @@ export const providerPresets: ProviderPreset[] = [
         ANTHROPIC_AUTH_TOKEN: "",
         API_TIMEOUT_MS: "3000000",
         CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: 1,
-        ANTHROPIC_MODEL: "MiniMax-M2.5",
-        ANTHROPIC_DEFAULT_SONNET_MODEL: "MiniMax-M2.5",
-        ANTHROPIC_DEFAULT_OPUS_MODEL: "MiniMax-M2.5",
-        ANTHROPIC_DEFAULT_HAIKU_MODEL: "MiniMax-M2.5",
+        ANTHROPIC_MODEL: "MiniMax-M2.7",
+        ANTHROPIC_DEFAULT_SONNET_MODEL: "MiniMax-M2.7",
+        ANTHROPIC_DEFAULT_OPUS_MODEL: "MiniMax-M2.7",
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: "MiniMax-M2.7",
       },
     },
     category: "cn_official",
@@ -368,15 +376,15 @@ export const providerPresets: ProviderPreset[] = [
   {
     name: "SiliconFlow",
     websiteUrl: "https://siliconflow.cn",
-    apiKeyUrl: "https://cloud.siliconflow.cn/me/account/ak",
+    apiKeyUrl: "https://cloud.siliconflow.cn/i/drGuwc9k",
     settingsConfig: {
       env: {
         ANTHROPIC_BASE_URL: "https://api.siliconflow.cn",
         ANTHROPIC_AUTH_TOKEN: "",
-        ANTHROPIC_MODEL: "Pro/MiniMaxAI/MiniMax-M2.5",
-        ANTHROPIC_DEFAULT_HAIKU_MODEL: "Pro/MiniMaxAI/MiniMax-M2.5",
-        ANTHROPIC_DEFAULT_SONNET_MODEL: "Pro/MiniMaxAI/MiniMax-M2.5",
-        ANTHROPIC_DEFAULT_OPUS_MODEL: "Pro/MiniMaxAI/MiniMax-M2.5",
+        ANTHROPIC_MODEL: "Pro/MiniMaxAI/MiniMax-M2.7",
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: "Pro/MiniMaxAI/MiniMax-M2.7",
+        ANTHROPIC_DEFAULT_SONNET_MODEL: "Pro/MiniMaxAI/MiniMax-M2.7",
+        ANTHROPIC_DEFAULT_OPUS_MODEL: "Pro/MiniMaxAI/MiniMax-M2.7",
       },
     },
     category: "aggregator",
@@ -388,15 +396,15 @@ export const providerPresets: ProviderPreset[] = [
   {
     name: "SiliconFlow en",
     websiteUrl: "https://siliconflow.com",
-    apiKeyUrl: "https://cloud.siliconflow.com/account/ak",
+    apiKeyUrl: "https://cloud.siliconflow.cn/i/drGuwc9k",
     settingsConfig: {
       env: {
         ANTHROPIC_BASE_URL: "https://api.siliconflow.com",
         ANTHROPIC_AUTH_TOKEN: "",
-        ANTHROPIC_MODEL: "MiniMaxAI/MiniMax-M2.5",
-        ANTHROPIC_DEFAULT_HAIKU_MODEL: "MiniMaxAI/MiniMax-M2.5",
-        ANTHROPIC_DEFAULT_SONNET_MODEL: "MiniMaxAI/MiniMax-M2.5",
-        ANTHROPIC_DEFAULT_OPUS_MODEL: "MiniMaxAI/MiniMax-M2.5",
+        ANTHROPIC_MODEL: "MiniMaxAI/MiniMax-M2.7",
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: "MiniMaxAI/MiniMax-M2.7",
+        ANTHROPIC_DEFAULT_SONNET_MODEL: "MiniMaxAI/MiniMax-M2.7",
+        ANTHROPIC_DEFAULT_OPUS_MODEL: "MiniMaxAI/MiniMax-M2.7",
       },
     },
     category: "aggregator",
@@ -573,7 +581,8 @@ export const providerPresets: ProviderPreset[] = [
     iconColor: "#000000",
   },
   {
-    name: "Ucloud",
+    name: "Compshare",
+    nameKey: "providerForm.presets.ucloud",
     websiteUrl: "https://www.compshare.cn",
     apiKeyUrl:
       "https://www.compshare.cn/coding-plan?ytag=GPU_YY_YX_git_cc-switch",
@@ -593,7 +602,7 @@ export const providerPresets: ProviderPreset[] = [
   {
     name: "Micu",
     websiteUrl: "https://www.openclaudecode.cn",
-    apiKeyUrl: "https://www.openclaudecode.cn",
+    apiKeyUrl: "https://www.openclaudecode.cn/register?aff=aOYQ",
     settingsConfig: {
       env: {
         ANTHROPIC_BASE_URL: "https://www.openclaudecode.cn",
@@ -609,19 +618,35 @@ export const providerPresets: ProviderPreset[] = [
   },
   {
     name: "X-Code API",
-    websiteUrl: "https://www.x-code.cn",
-    apiKeyUrl: "https://www.x-code.cn",
+    websiteUrl: "https://x-code.cc",
+    apiKeyUrl: "https://x-code.cc",
     settingsConfig: {
       env: {
-        ANTHROPIC_BASE_URL: "https://www.x-code.cn",
+        ANTHROPIC_BASE_URL: "https://x-code.cc",
         ANTHROPIC_AUTH_TOKEN: "",
       },
     },
-    endpointCandidates: ["https://www.x-code.cn"],
+    endpointCandidates: ["https://x-code.cc"],
     category: "third_party",
     isPartner: true, // 合作伙伴
     partnerPromotionKey: "x-code", // 促销信息 i18n key
     icon: "x-code",
+    iconColor: "#000000",
+  },
+  {
+    name: "CTok.ai",
+    websiteUrl: "https://ctok.ai",
+    apiKeyUrl: "https://ctok.ai",
+    settingsConfig: {
+      env: {
+        ANTHROPIC_BASE_URL: "https://api.ctok.ai",
+        ANTHROPIC_AUTH_TOKEN: "",
+      },
+    },
+    category: "third_party",
+    isPartner: true, // 合作伙伴
+    partnerPromotionKey: "ctok", // 促销信息 i18n key
+    icon: "ctok",
     iconColor: "#000000",
   },
   {
@@ -662,6 +687,25 @@ export const providerPresets: ProviderPreset[] = [
     iconColor: "#000000",
   },
   {
+    name: "GitHub Copilot",
+    websiteUrl: "https://github.com/features/copilot",
+    settingsConfig: {
+      env: {
+        ANTHROPIC_BASE_URL: "https://api.githubcopilot.com",
+        ANTHROPIC_MODEL: "claude-opus-4.6",
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: "claude-haiku-4.5",
+        ANTHROPIC_DEFAULT_SONNET_MODEL: "claude-sonnet-4.6",
+        ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-opus-4.6",
+      },
+    },
+    category: "third_party",
+    apiFormat: "openai_chat",
+    providerType: "github_copilot",
+    requiresOAuth: true,
+    icon: "github",
+    iconColor: "#000000",
+  },
+  {
     name: "Nvidia",
     websiteUrl: "https://build.nvidia.com",
     apiKeyUrl: "https://build.nvidia.com/settings/api-keys",
@@ -688,10 +732,10 @@ export const providerPresets: ProviderPreset[] = [
       env: {
         ANTHROPIC_BASE_URL: "https://api.xiaomimimo.com/anthropic",
         ANTHROPIC_AUTH_TOKEN: "",
-        ANTHROPIC_MODEL: "mimo-v2-flash",
-        ANTHROPIC_DEFAULT_HAIKU_MODEL: "mimo-v2-flash",
-        ANTHROPIC_DEFAULT_SONNET_MODEL: "mimo-v2-flash",
-        ANTHROPIC_DEFAULT_OPUS_MODEL: "mimo-v2-flash",
+        ANTHROPIC_MODEL: "mimo-v2-pro",
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: "mimo-v2-pro",
+        ANTHROPIC_DEFAULT_SONNET_MODEL: "mimo-v2-pro",
+        ANTHROPIC_DEFAULT_OPUS_MODEL: "mimo-v2-pro",
       },
     },
     category: "cn_official",

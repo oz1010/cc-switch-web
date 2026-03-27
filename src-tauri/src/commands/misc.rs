@@ -2,10 +2,12 @@
 
 use crate::app_config::AppType;
 use crate::init_status::{InitErrorPayload, SkillsMigrationPayload};
+use crate::ProviderService;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashMap;
 use std::path::Path;
+use std::str::FromStr;
 #[cfg(feature = "desktop")]
 use tauri::AppHandle;
 #[cfg(feature = "desktop")]

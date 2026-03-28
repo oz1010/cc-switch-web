@@ -17,30 +17,39 @@ cd "$PROJECT_ROOT"
 RUNTIME_DIR="${CC_SWITCH_RUNTIME_DIR:-$PROJECT_ROOT/.run/web}"
 BACKEND_LOG_FILE="$RUNTIME_DIR/backend.log"
 BACKEND_PID_FILE="$RUNTIME_DIR/backend.pid"
-BACKEND_DATA_DIR="$RUNTIME_DIR/data"
 
 BACKEND_HOST="${CC_SWITCH_HOST:-127.0.0.1}"
 BACKEND_PORT="${CC_SWITCH_PORT:-17666}"
 START_TIMEOUT="${CC_SWITCH_START_TIMEOUT:-30}"
+BUILD_MODE="${CC_SWITCH_BUILD_MODE:-auto}"
 
 BACKEND_BIN="$PROJECT_ROOT/crates/server/target/release/cc-switch-web"
+FRONTEND_ENTRY="$PROJECT_ROOT/dist/index.html"
 
 mkdir -p "$RUNTIME_DIR"
 
 resolve_app_config_dir() {
+    local app_config_dir=""
     if [[ -n "${CC_SWITCH_CONFIG_DIR:-}" ]]; then
-        printf '%s\n' "$CC_SWITCH_CONFIG_DIR"
-        return
+        app_config_dir="$CC_SWITCH_CONFIG_DIR"
+    else
+        app_config_dir="${HOME:-$PROJECT_ROOT}/.cc-switch"
     fi
 
-    local default_dir="${HOME:-$PROJECT_ROOT}/.cc-switch"
-    if mkdir -p "$default_dir" 2>/dev/null && [[ -w "$default_dir" ]]; then
-        printf '%s\n' "$default_dir"
-        return
+    if ! mkdir -p "$app_config_dir" 2>/dev/null; then
+        echo "❌ Error: unable to create app config dir: $app_config_dir" >&2
+        echo "   Use CC_SWITCH_CONFIG_DIR to point to an explicit writable directory." >&2
+        return 1
     fi
 
-    mkdir -p "$BACKEND_DATA_DIR"
-    printf '%s\n' "$BACKEND_DATA_DIR"
+    if [[ ! -w "$app_config_dir" ]]; then
+        echo "❌ Error: app config dir is not writable: $app_config_dir" >&2
+        echo "   Refusing to switch to a fallback data directory automatically." >&2
+        echo "   Use CC_SWITCH_CONFIG_DIR to point to your real writable config directory." >&2
+        return 1
+    fi
+
+    printf '%s\n' "$app_config_dir"
 }
 
 is_pid_running() {
@@ -151,6 +160,78 @@ require_command() {
     fi
 }
 
+should_build_output() {
+    local output_path="$1"
+    shift
+
+    case "$BUILD_MODE" in
+        always)
+            return 0
+            ;;
+        auto)
+            if [[ ! -e "$output_path" ]]; then
+                return 0
+            fi
+
+            if source_is_newer_than_output "$output_path" "$@"; then
+                return 0
+            fi
+
+            return 1
+            ;;
+        never)
+            return 1
+            ;;
+        *)
+            echo "❌ Error: invalid CC_SWITCH_BUILD_MODE: $BUILD_MODE" >&2
+            echo "   Supported values: auto, always, never" >&2
+            exit 1
+            ;;
+    esac
+}
+
+source_is_newer_than_output() {
+    local output_path="$1"
+    shift
+    local source_path=""
+
+    for source_path in "$@"; do
+        [[ -e "$source_path" ]] || continue
+        if [[ "$source_path" -nt "$output_path" ]]; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+collect_files() {
+    local path=""
+
+    for path in "$@"; do
+        if [[ -f "$path" ]]; then
+            printf '%s\n' "$path"
+            continue
+        fi
+
+        if [[ -d "$path" ]]; then
+            find "$path" -type f
+        fi
+    done
+}
+
+ensure_required_output() {
+    local output_path="$1"
+    local label="$2"
+
+    if [[ ! -e "$output_path" ]]; then
+        echo "❌ Error: missing ${label}: $output_path" >&2
+        echo "   Current CC_SWITCH_BUILD_MODE=$BUILD_MODE prevents building it automatically." >&2
+        echo "   Run with CC_SWITCH_BUILD_MODE=always or build it manually first." >&2
+        exit 1
+    fi
+}
+
 start_detached() {
     local log_file="$1"
     shift
@@ -185,18 +266,48 @@ require_command node "node not found. Please install Node.js."
 
 echo "📦 Runtime directory: $RUNTIME_DIR"
 echo "🗂 App config dir: $APP_CONFIG_DIR"
-if [[ -z "${CC_SWITCH_CONFIG_DIR:-}" && "$APP_CONFIG_DIR" == "$BACKEND_DATA_DIR" ]]; then
-    echo "⚠ Default app config dir is not writable, using runtime data directory instead"
-fi
-echo "🎨 Building frontend assets..."
-if command -v pnpm >/dev/null 2>&1; then
-    pnpm build:web
+echo "🧱 Build mode: $BUILD_MODE"
+
+mapfile -t FRONTEND_SOURCES < <(
+    collect_files \
+        "$PROJECT_ROOT/package.json" \
+        "$PROJECT_ROOT/pnpm-lock.yaml" \
+        "$PROJECT_ROOT/vite.config.ts" \
+        "$PROJECT_ROOT/src"
+)
+
+mapfile -t BACKEND_SOURCES < <(
+    collect_files \
+        "$PROJECT_ROOT/Cargo.lock" \
+        "$PROJECT_ROOT/crates/server/Cargo.toml" \
+        "$PROJECT_ROOT/crates/server/src" \
+        "$PROJECT_ROOT/crates/core/Cargo.toml" \
+        "$PROJECT_ROOT/crates/core/src" \
+        "$PROJECT_ROOT/src-tauri/Cargo.toml" \
+        "$PROJECT_ROOT/src-tauri/build.rs" \
+        "$PROJECT_ROOT/src-tauri/src"
+)
+
+if should_build_output "$FRONTEND_ENTRY" "${FRONTEND_SOURCES[@]}"; then
+    echo "🎨 Building frontend assets..."
+    if command -v pnpm >/dev/null 2>&1; then
+        pnpm build:web
+    else
+        npx vite build --mode web
+    fi
 else
-    npx vite build --mode web
+    echo "✓ Reusing frontend assets: $FRONTEND_ENTRY"
 fi
 
-echo "🔨 Building backend server..."
-cargo build --release --manifest-path crates/server/Cargo.toml
+if should_build_output "$BACKEND_BIN" "${BACKEND_SOURCES[@]}"; then
+    echo "🔨 Building backend server..."
+    cargo build --release --manifest-path crates/server/Cargo.toml
+else
+    echo "✓ Reusing backend binary: $BACKEND_BIN"
+fi
+
+ensure_required_output "$FRONTEND_ENTRY" "frontend asset entry"
+ensure_required_output "$BACKEND_BIN" "backend binary"
 
 if [[ ! -x "$BACKEND_BIN" ]]; then
     echo "❌ Error: backend binary not found at $BACKEND_BIN"

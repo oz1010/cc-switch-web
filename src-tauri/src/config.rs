@@ -91,6 +91,11 @@ pub fn get_app_config_dir() -> PathBuf {
         return custom;
     }
 
+    #[cfg(not(feature = "desktop"))]
+    if let Some(custom) = crate::app_store::refresh_app_config_dir_override() {
+        return custom;
+    }
+
     let default_dir = get_home_dir().join(".cc-switch");
 
     // 兼容 v3.10.3：当用户环境存在 `HOME` 且与真实用户目录不同，

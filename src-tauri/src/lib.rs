@@ -37,6 +37,7 @@ pub use app_config::{
 pub use codex_config::{
     get_codex_auth_path, get_codex_config_dir, get_codex_config_path, write_codex_live_atomic,
 };
+#[cfg(feature = "desktop")]
 pub use commands::open_provider_terminal;
 pub use commands::ModelPricingInfo;
 pub use commands::*;
@@ -1592,6 +1593,7 @@ async fn restore_proxy_state_on_startup(state: &store::AppState) {
     }
 }
 
+#[cfg(feature = "desktop")]
 fn initialize_common_config_snippets(state: &store::AppState) {
     // Auto-extract common config snippets from clean live files when snippet is missing.
     // This must run before proxy takeover is restored on startup, otherwise we'd read

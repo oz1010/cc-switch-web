@@ -69,8 +69,11 @@ pnpm typecheck
 # 前端单元测试
 pnpm test:unit
 
-# 构建嵌入式 Web 前端
-pnpm build:web
+# 构建 Web 前端（默认 build 目标）
+pnpm build
+
+# 需要桌面打包时
+pnpm build:desktop
 ```
 
 ### 本地启动 Web
@@ -105,7 +108,7 @@ CC_SWITCH_RUNTIME_DIR=/tmp/cc-switch-web ./start-web.sh
 ### 手动构建 Web 版本
 
 ```bash
-pnpm build:web
+pnpm build
 cargo build --release --manifest-path crates/server/Cargo.toml
 ./crates/server/target/release/cc-switch-web
 ```

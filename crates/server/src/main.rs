@@ -96,16 +96,15 @@ async fn welcome_handler() -> Html<&'static str> {
 </html>"#)
 }
 
-/// 检查端口是否可用
-fn is_port_available(host: &str, port: u16) -> bool {
-    StdTcpListener::bind(format!("{}:{}", host, port)).is_ok()
+fn try_bind_listener(host: &str, port: u16) -> Option<StdTcpListener> {
+    StdTcpListener::bind(format!("{}:{}", host, port)).ok()
 }
 
-/// 查找可用端口（从指定端口开始，最多尝试 100 个端口）
-fn find_available_port(host: &str, start_port: u16) -> Option<u16> {
+/// 查找可用端口并直接保留监听器，避免“先探测再绑定”的竞争窗口。
+fn find_available_listener(host: &str, start_port: u16) -> Option<(u16, StdTcpListener)> {
     for port in start_port..start_port.saturating_add(100) {
-        if is_port_available(host, port) {
-            return Some(port);
+        if let Some(listener) = try_bind_listener(host, port) {
+            return Some((port, listener));
         }
     }
     None
@@ -213,17 +212,17 @@ async fn main() {
     let allow_auto_port = is_loopback && auto_port;
 
     // Find available port
-    let port = if is_port_available(&host, requested_port) {
-        requested_port
+    let (port, std_listener) = if let Some(listener) = try_bind_listener(&host, requested_port) {
+        (requested_port, listener)
     } else if allow_auto_port {
         eprintln!();
         eprintln!("⚠️  Port {} is already in use", requested_port);
-        match find_available_port(&host, requested_port + 1) {
-            Some(p) => {
-                eprintln!("   Automatically using port {} instead", p);
+        match find_available_listener(&host, requested_port + 1) {
+            Some((port, listener)) => {
+                eprintln!("   Automatically using port {} instead", port);
                 eprintln!("   To disable auto-port: CC_SWITCH_AUTO_PORT=false");
                 eprintln!();
-                p
+                (port, listener)
             }
             None => {
                 eprintln!("❌ Error: Could not find an available port");
@@ -292,10 +291,15 @@ async fn main() {
 
     tracing::info!("Starting CC-Switch server on {}", addr);
 
-    let listener = match tokio::net::TcpListener::bind(&addr).await {
+    if let Err(e) = std_listener.set_nonblocking(true) {
+        eprintln!("❌ Failed to configure listener for {}: {}", addr, e);
+        std::process::exit(1);
+    }
+
+    let listener = match tokio::net::TcpListener::from_std(std_listener) {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("❌ Failed to bind to {}: {}", addr, e);
+            eprintln!("❌ Failed to attach listener to {}: {}", addr, e);
             std::process::exit(1);
         }
     };

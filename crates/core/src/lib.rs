@@ -19,7 +19,8 @@ use indexmap::IndexMap;
 /// 对外暴露的核心类型别名，便于直接使用
 pub use cc_switch::{
     AppSettings as CoreAppSettings, AppType as CoreAppType, BackupEntry, ConfigStatus, DailyStats,
-    DiscoverableSkill, HealthStatus, LogConfig, LogFilters, McpServer as CoreMcpServer,
+    DiscoverableSkill, HealthStatus, ImportSkillSelection, LogConfig, LogFilters,
+    McpServer as CoreMcpServer,
     ModelPricingInfo as CoreModelPricingInfo, ModelStats, OmoLocalFileData, OpenClawAgentsDefaults,
     OpenClawDefaultModel, OpenClawEnvConfig, OpenClawModelCatalogEntry, OpenClawToolsConfig,
     OptimizerConfig, PaginatedLogs, Provider as CoreProvider, ProviderLimitStatus, ProviderStats,
@@ -256,7 +257,7 @@ pub async fn stream_check_provider(
         .get(provider_id)
         .ok_or_else(|| format!("供应商 {provider_id} 不存在"))?;
 
-    let result = StreamCheckService::check_with_retry(&app_type, provider, &config)
+    let result = StreamCheckService::check_with_retry(&app_type, provider, &config, None)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -310,7 +311,7 @@ pub async fn stream_check_all_providers(
             }
         }
 
-        let result = StreamCheckService::check_with_retry(&app_type, &provider, &config)
+        let result = StreamCheckService::check_with_retry(&app_type, &provider, &config, None)
             .await
             .unwrap_or_else(|e| StreamCheckResult {
                 status: HealthStatus::Failed,
@@ -1372,9 +1373,9 @@ pub fn scan_unmanaged_skills(ctx: &CoreContext) -> Result<serde_json::Value, Str
 /// 从应用目录导入 Skills
 pub fn import_skills_from_apps(
     ctx: &CoreContext,
-    directories: Vec<String>,
+    imports: Vec<ImportSkillSelection>,
 ) -> Result<serde_json::Value, String> {
-    let installed = SkillService::import_from_apps(&ctx.app_state().db, directories)
+    let installed = SkillService::import_from_apps(&ctx.app_state().db, imports)
         .map_err(|e| e.to_string())?;
     serde_json::to_value(installed).map_err(|e| e.to_string())
 }

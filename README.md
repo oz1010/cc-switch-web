@@ -69,8 +69,11 @@ pnpm typecheck
 # Frontend unit tests
 pnpm test:unit
 
-# Build embedded Web frontend
-pnpm build:web
+# Build Web frontend (default build target)
+pnpm build
+
+# Desktop packaging when needed
+pnpm build:desktop
 ```
 
 ### Local Web Launch
@@ -105,7 +108,7 @@ CC_SWITCH_RUNTIME_DIR=/tmp/cc-switch-web ./start-web.sh
 ### Manual Web Build
 
 ```bash
-pnpm build:web
+pnpm build
 cargo build --release --manifest-path crates/server/Cargo.toml
 ./crates/server/target/release/cc-switch-web
 ```

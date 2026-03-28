@@ -1628,15 +1628,30 @@ pub async fn dispatch_command(
         }
 
         "import_skills_from_apps" => {
-            let directories_value = params
-                .get("directories")
-                .cloned()
-                .ok_or_else(|| RpcError::invalid_params("missing 'directories' field"))?;
-            let directories: Vec<String> =
-                serde_json::from_value(directories_value).map_err(|e| {
-                    RpcError::invalid_params(format!("invalid 'directories' value: {e}"))
-                })?;
-            let installed = cc_switch_core::import_skills_from_apps(core, directories)
+            let imports = if let Some(imports_value) = params.get("imports").cloned() {
+                serde_json::from_value(imports_value).map_err(|e| {
+                    RpcError::invalid_params(format!("invalid 'imports' value: {e}"))
+                })?
+            } else {
+                let directories_value = params
+                    .get("directories")
+                    .cloned()
+                    .ok_or_else(|| {
+                        RpcError::invalid_params("missing 'imports' or legacy 'directories' field")
+                    })?;
+                let directories: Vec<String> =
+                    serde_json::from_value(directories_value).map_err(|e| {
+                        RpcError::invalid_params(format!("invalid 'directories' value: {e}"))
+                    })?;
+                directories
+                    .into_iter()
+                    .map(|directory| cc_switch_core::ImportSkillSelection {
+                        directory,
+                        apps: Default::default(),
+                    })
+                    .collect()
+            };
+            let installed = cc_switch_core::import_skills_from_apps(core, imports)
                 .map_err(RpcError::app_error)?;
             Ok(installed)
         }

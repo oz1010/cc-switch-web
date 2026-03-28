@@ -8,7 +8,7 @@ use super::{
     failover_switch::FailoverSwitchManager,
     log_codes::fwd as log_fwd,
     provider_router::ProviderRouter,
-    providers::{get_adapter, AuthInfo, AuthStrategy, ProviderAdapter, ProviderType},
+    providers::{get_adapter, AuthStrategy, ProviderAdapter, ProviderType},
     thinking_budget_rectifier::{rectify_thinking_budget, should_rectify_thinking_budget},
     thinking_rectifier::{
         normalize_thinking_type, rectify_anthropic_request, should_rectify_thinking_signature,
@@ -17,12 +17,17 @@ use super::{
     ProxyError,
 };
 use crate::ui_runtime::UiAppHandle;
+#[cfg(feature = "desktop")]
 use crate::commands::CopilotAuthState;
+#[cfg(feature = "desktop")]
 use crate::proxy::providers::copilot_auth::CopilotAuthManager;
+#[cfg(feature = "desktop")]
+use crate::proxy::providers::AuthInfo;
 use crate::{app_config::AppType, provider::Provider};
 use reqwest::Response;
 use serde_json::Value;
 use std::sync::Arc;
+#[cfg(feature = "desktop")]
 use tauri::Manager;
 use tokio::sync::RwLock;
 
@@ -922,9 +927,10 @@ impl RequestForwarder {
         }
 
         // 使用适配器添加认证头
-        if let Some(mut auth) = adapter.extract_auth(provider) {
+        if let Some(auth) = adapter.extract_auth(provider) {
             // GitHub Copilot 特殊处理：从 CopilotAuthManager 获取真实 token
-            if auth.strategy == AuthStrategy::GitHubCopilot {
+            #[cfg(feature = "desktop")]
+            let auth = if auth.strategy == AuthStrategy::GitHubCopilot {
                 if let Some(app_handle) = &self.app_handle {
                     let copilot_state = app_handle.state::<CopilotAuthState>();
                     let copilot_auth: tokio::sync::RwLockReadGuard<'_, CopilotAuthManager> =
@@ -950,11 +956,11 @@ impl RequestForwarder {
 
                     match token_result {
                         Ok(token) => {
-                            auth = AuthInfo::new(token, AuthStrategy::GitHubCopilot);
                             log::debug!(
                                 "[Copilot] 成功获取 Copilot token (account={})",
                                 account_id.as_deref().unwrap_or("default")
                             );
+                            AuthInfo::new(token, AuthStrategy::GitHubCopilot)
                         }
                         Err(e) => {
                             log::error!(
@@ -972,7 +978,20 @@ impl RequestForwarder {
                         "GitHub Copilot 认证不可用（无 AppHandle）".to_string(),
                     ));
                 }
-            }
+            } else {
+                auth
+            };
+
+            #[cfg(not(feature = "desktop"))]
+            let auth = {
+                if auth.strategy == AuthStrategy::GitHubCopilot {
+                    log::warn!(
+                        "[Copilot] headless 模式不支持通过桌面状态刷新 GitHub Copilot token，将使用现有认证信息"
+                    );
+                }
+                auth
+            };
+
             request = adapter.add_auth_headers(request, &auth);
         }
 

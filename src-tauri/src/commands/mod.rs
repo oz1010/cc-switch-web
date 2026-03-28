@@ -6,6 +6,7 @@ mod auth;
 mod config;
 #[cfg(feature = "desktop")]
 mod copilot;
+#[cfg(feature = "desktop")]
 mod deeplink;
 #[cfg(feature = "desktop")]
 mod env;
@@ -48,6 +49,7 @@ pub use auth::*;
 pub use config::*;
 #[cfg(feature = "desktop")]
 pub use copilot::*;
+#[cfg(feature = "desktop")]
 pub use deeplink::*;
 #[cfg(feature = "desktop")]
 pub use env::*;

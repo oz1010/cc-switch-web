@@ -14,6 +14,7 @@
 //! - 每个 GitHub 账号独立存储 token
 //! - Provider 通过 meta.authBinding 关联账号
 //! - 自动迁移 v1 单账号格式到 v3 多账号 + 默认账号格式
+#![cfg_attr(not(feature = "desktop"), allow(dead_code))]
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};

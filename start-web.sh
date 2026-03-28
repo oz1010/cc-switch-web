@@ -17,6 +17,7 @@ cd "$PROJECT_ROOT"
 RUNTIME_DIR="${CC_SWITCH_RUNTIME_DIR:-$PROJECT_ROOT/.run/web}"
 BACKEND_LOG_FILE="$RUNTIME_DIR/backend.log"
 BACKEND_PID_FILE="$RUNTIME_DIR/backend.pid"
+BACKEND_DATA_DIR="$RUNTIME_DIR/data"
 
 BACKEND_HOST="${CC_SWITCH_HOST:-127.0.0.1}"
 BACKEND_PORT="${CC_SWITCH_PORT:-17666}"
@@ -25,6 +26,22 @@ START_TIMEOUT="${CC_SWITCH_START_TIMEOUT:-30}"
 BACKEND_BIN="$PROJECT_ROOT/crates/server/target/release/cc-switch-web"
 
 mkdir -p "$RUNTIME_DIR"
+
+resolve_app_config_dir() {
+    if [[ -n "${CC_SWITCH_CONFIG_DIR:-}" ]]; then
+        printf '%s\n' "$CC_SWITCH_CONFIG_DIR"
+        return
+    fi
+
+    local default_dir="${HOME:-$PROJECT_ROOT}/.cc-switch"
+    if mkdir -p "$default_dir" 2>/dev/null && [[ -w "$default_dir" ]]; then
+        printf '%s\n' "$default_dir"
+        return
+    fi
+
+    mkdir -p "$BACKEND_DATA_DIR"
+    printf '%s\n' "$BACKEND_DATA_DIR"
+}
 
 is_pid_running() {
     local pid="${1:-}"
@@ -145,6 +162,7 @@ start_detached() {
 cleanup_stale_pid_file "$BACKEND_PID_FILE"
 
 BACKEND_PROBE_HOST="$(probe_host_for "$BACKEND_HOST")"
+APP_CONFIG_DIR="$(resolve_app_config_dir)"
 
 if pid="$(read_pid_file "$BACKEND_PID_FILE" 2>/dev/null || true)"; [[ -n "$pid" ]] && is_pid_running "$pid"; then
     echo "❌ Backend is already running (PID: $pid)"
@@ -166,6 +184,10 @@ require_command cargo "cargo not found. Please install Rust."
 require_command node "node not found. Please install Node.js."
 
 echo "📦 Runtime directory: $RUNTIME_DIR"
+echo "🗂 App config dir: $APP_CONFIG_DIR"
+if [[ -z "${CC_SWITCH_CONFIG_DIR:-}" && "$APP_CONFIG_DIR" == "$BACKEND_DATA_DIR" ]]; then
+    echo "⚠ Default app config dir is not writable, using runtime data directory instead"
+fi
 echo "🎨 Building frontend assets..."
 if command -v pnpm >/dev/null 2>&1; then
     pnpm build:web
@@ -188,7 +210,7 @@ echo "🎯 Starting service in background..."
 echo ""
 
 echo "▶ Starting backend on http://$BACKEND_HOST:$BACKEND_PORT"
-BACKEND_PID="$(start_detached "$BACKEND_LOG_FILE" env CC_SWITCH_HOST="$BACKEND_HOST" CC_SWITCH_PORT="$BACKEND_PORT" CC_SWITCH_AUTO_PORT=false "$BACKEND_BIN")"
+BACKEND_PID="$(start_detached "$BACKEND_LOG_FILE" env CC_SWITCH_HOST="$BACKEND_HOST" CC_SWITCH_PORT="$BACKEND_PORT" CC_SWITCH_AUTO_PORT=false CC_SWITCH_CONFIG_DIR="$APP_CONFIG_DIR" "$BACKEND_BIN")"
 printf '%s\n' "$BACKEND_PID" >"$BACKEND_PID_FILE"
 
 if ! wait_for_http "Backend" "$BACKEND_PID" "$BACKEND_PROBE_HOST" "$BACKEND_PORT" "/health" "$BACKEND_LOG_FILE"; then

@@ -21,7 +21,9 @@ impl ServerState {
         auth_config: Option<AuthConfig>,
     ) -> Arc<Self> {
         // 初始化核心上下文（数据库、SkillService 等）
-        let core = CoreContext::new().expect("failed to initialize cc-switch core context");
+        let core = CoreContext::new().unwrap_or_else(|e| {
+            panic!("failed to initialize cc-switch core context: {e}");
+        });
         Arc::new(Self {
             auth_token,
             event_bus,

@@ -7,7 +7,8 @@
 - 仅 Rust 后端服务器（`crates/server`）：`pnpm dev:server`（相当于 `cargo run --manifest-path crates/server/Cargo.toml`）
 
 ## 构建
-- 桌面应用构建（Tauri 打包）：`pnpm build`（等价于 `pnpm tauri build`）
+- Web 版静态构建（默认）：`pnpm build`（等价于 `pnpm build:web`）
+- 桌面应用构建（Tauri 打包）：`pnpm build:desktop`（等价于 `pnpm tauri build`）
 - 仅前端构建：`pnpm build:renderer`
 - Web 版静态构建：`pnpm build:web`
 

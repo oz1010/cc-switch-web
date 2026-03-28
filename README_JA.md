@@ -69,8 +69,11 @@ pnpm typecheck
 # フロントエンド単体テスト
 pnpm test:unit
 
-# 埋め込み Web フロントエンドをビルド
-pnpm build:web
+# Web フロントエンドをビルド（既定の build）
+pnpm build
+
+# デスクトップをパッケージするとき
+pnpm build:desktop
 ```
 
 ### ローカル Web 起動
@@ -105,7 +108,7 @@ CC_SWITCH_RUNTIME_DIR=/tmp/cc-switch-web ./start-web.sh
 ### 手動で Web ビルド
 
 ```bash
-pnpm build:web
+pnpm build
 cargo build --release --manifest-path crates/server/Cargo.toml
 ./crates/server/target/release/cc-switch-web
 ```

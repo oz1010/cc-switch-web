@@ -13,6 +13,8 @@ mod gemini_config;
 mod gemini_mcp;
 mod init_status;
 mod import_export_support;
+#[cfg(feature = "desktop")]
+mod lightweight;
 mod mcp;
 mod openclaw_config;
 mod opencode_config;
@@ -98,6 +100,80 @@ pub use settings::{
     update_settings, update_webdav_sync_status, AppSettings, WebDavSyncSettings,
 };
 pub use store::AppState;
+
+#[cfg(all(feature = "test-hooks", not(feature = "desktop")))]
+pub fn switch_provider_test_hook(
+    state: &AppState,
+    app_type: AppType,
+    id: &str,
+) -> Result<crate::services::SwitchResult, AppError> {
+    ProviderService::switch(state, app_type, id)
+}
+
+#[cfg(all(feature = "test-hooks", not(feature = "desktop")))]
+pub fn import_default_config_test_hook(
+    state: &AppState,
+    app_type: AppType,
+) -> Result<bool, AppError> {
+    let imported = ProviderService::import_default_config(state, app_type.clone())?;
+
+    if imported {
+        if state
+            .db
+            .should_auto_extract_config_snippet(app_type.as_str())?
+        {
+            match ProviderService::extract_common_config_snippet(state, app_type.clone()) {
+                Ok(snippet) if !snippet.is_empty() && snippet != "{}" => {
+                    let _ = state
+                        .db
+                        .set_config_snippet(app_type.as_str(), Some(snippet));
+                    let _ = state
+                        .db
+                        .set_config_snippet_cleared(app_type.as_str(), false);
+                }
+                _ => {}
+            }
+        }
+
+        ProviderService::migrate_legacy_common_config_usage_if_needed(state, app_type)?;
+    }
+
+    Ok(imported)
+}
+
+#[cfg(all(feature = "test-hooks", not(feature = "desktop")))]
+pub async fn get_default_cost_multiplier_test_hook(
+    state: &AppState,
+    app_type: &str,
+) -> Result<String, AppError> {
+    state.db.get_default_cost_multiplier(app_type).await
+}
+
+#[cfg(all(feature = "test-hooks", not(feature = "desktop")))]
+pub async fn set_default_cost_multiplier_test_hook(
+    state: &AppState,
+    app_type: &str,
+    value: &str,
+) -> Result<(), AppError> {
+    state.db.set_default_cost_multiplier(app_type, value).await
+}
+
+#[cfg(all(feature = "test-hooks", not(feature = "desktop")))]
+pub async fn get_pricing_model_source_test_hook(
+    state: &AppState,
+    app_type: &str,
+) -> Result<String, AppError> {
+    state.db.get_pricing_model_source(app_type).await
+}
+
+#[cfg(all(feature = "test-hooks", not(feature = "desktop")))]
+pub async fn set_pricing_model_source_test_hook(
+    state: &AppState,
+    app_type: &str,
+    value: &str,
+) -> Result<(), AppError> {
+    state.db.set_pricing_model_source(app_type, value).await
+}
 
 pub const WEB_COMPAT_TAURI_COMMANDS: &[&str] = &[
     "get_providers",
@@ -496,6 +572,12 @@ pub fn run() {
             log::debug!("Args count: {}", args.len());
             for (i, arg) in args.iter().enumerate() {
                 log::debug!("  arg[{i}]: {}", redact_url_for_log(arg));
+            }
+
+            if crate::lightweight::is_lightweight_mode() {
+                if let Err(e) = crate::lightweight::exit_lightweight_mode(app) {
+                    log::error!("退出轻量模式重建窗口失败: {e}");
+                }
             }
 
             // Check for deep link URL in args (mainly for Windows/Linux command line)
@@ -909,6 +991,12 @@ pub fn run() {
                     let urls = event.urls();
                     log::info!("Received {} URL(s)", urls.len());
 
+                    if crate::lightweight::is_lightweight_mode() {
+                        if let Err(e) = crate::lightweight::exit_lightweight_mode(&app_handle) {
+                            log::error!("退出轻量模式重建窗口失败: {e}");
+                        }
+                    }
+
                     for (i, url) in urls.iter().enumerate() {
                         let url_str = url.as_str();
                         log::debug!("  URL[{i}]: {}", redact_url_for_log(url_str));
@@ -1302,6 +1390,7 @@ pub fn run() {
             commands::list_sessions,
             commands::get_session_messages,
             commands::delete_session,
+            commands::delete_sessions,
             commands::launch_session_terminal,
             commands::get_tool_versions,
             // Provider terminal
@@ -1379,6 +1468,10 @@ pub fn run() {
             commands::delete_daily_memory_file,
             commands::search_daily_memory_files,
             commands::open_workspace_directory,
+            // lightweight mode (for testing or low-resource environments)
+            commands::enter_lightweight_mode,
+            commands::exit_lightweight_mode,
+            commands::is_lightweight_mode,
         ]);
 
     let app = builder
@@ -1429,6 +1522,10 @@ pub fn run() {
                         let _ = window.show();
                         let _ = window.set_focus();
                         tray::apply_tray_policy(app_handle, true);
+                    } else if crate::lightweight::is_lightweight_mode() {
+                        if let Err(e) = crate::lightweight::exit_lightweight_mode(app_handle) {
+                            log::error!("退出轻量模式重建窗口失败: {e}");
+                        }
                     }
                 }
                 // 处理通过自定义 URL 协议触发的打开事件（例如 ccswitch://...）
@@ -1438,6 +1535,13 @@ pub fn run() {
                         log::info!("RunEvent::Opened with URL: {url_str}");
 
                         if url_str.starts_with("ccswitch://") {
+                            if crate::lightweight::is_lightweight_mode() {
+                                if let Err(e) = crate::lightweight::exit_lightweight_mode(app_handle)
+                                {
+                                    log::error!("退出轻量模式重建窗口失败: {e}");
+                                }
+                            }
+
                             // 解析并广播深链接事件，复用与 single_instance 相同的逻辑
                             match crate::deeplink::parse_deeplink_url(&url_str) {
                                 Ok(request) => {

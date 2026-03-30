@@ -42,6 +42,8 @@ mod usage;
 mod webdav_sync;
 #[cfg(feature = "desktop")]
 mod workspace;
+#[cfg(feature = "desktop")]
+mod lightweight;
 
 #[cfg(feature = "desktop")]
 pub use auth::*;
@@ -84,3 +86,5 @@ pub use usage::*;
 pub use webdav_sync::*;
 #[cfg(feature = "desktop")]
 pub use workspace::*;
+#[cfg(feature = "desktop")]
+pub use lightweight::*;

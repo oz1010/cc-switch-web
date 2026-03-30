@@ -257,7 +257,7 @@ pub async fn stream_check_provider(
         .get(provider_id)
         .ok_or_else(|| format!("供应商 {provider_id} 不存在"))?;
 
-    let result = StreamCheckService::check_with_retry(&app_type, provider, &config, None)
+    let result = StreamCheckService::check_with_retry(&app_type, provider, &config, None, None)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -311,7 +311,8 @@ pub async fn stream_check_all_providers(
             }
         }
 
-        let result = StreamCheckService::check_with_retry(&app_type, &provider, &config, None)
+        let result =
+            StreamCheckService::check_with_retry(&app_type, &provider, &config, None, None)
             .await
             .unwrap_or_else(|e| StreamCheckResult {
                 status: HealthStatus::Failed,

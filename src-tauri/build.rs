@@ -1,10 +1,15 @@
 fn main() {
-    let desktop_enabled = std::env::var_os("CARGO_FEATURE_DESKTOP").is_some();
-
-    if !desktop_enabled {
+    #[cfg(not(feature = "desktop"))]
+    {
         return;
     }
 
+    #[cfg(feature = "desktop")]
+    desktop_build();
+}
+
+#[cfg(feature = "desktop")]
+fn desktop_build() {
     tauri_build::build();
 
     // Windows: Embed Common Controls v6 manifest for test binaries

@@ -311,6 +311,8 @@ pub struct CopilotAuthManager {
     refresh_locks: Arc<RwLock<HashMap<String, Arc<Mutex<()>>>>>,
     /// Copilot Token 缓存（key = GitHub user ID，内存缓存，自动刷新）
     copilot_tokens: Arc<RwLock<HashMap<String, CopilotToken>>>,
+    /// Copilot Models 缓存（key = GitHub user ID，仅进程内复用）
+    copilot_models: Arc<RwLock<HashMap<String, Vec<CopilotModel>>>>,
     /// HTTP 客户端
     http_client: Client,
     /// 存储路径
@@ -331,6 +333,7 @@ impl CopilotAuthManager {
             default_account_id: Arc::new(RwLock::new(None)),
             refresh_locks: Arc::new(RwLock::new(HashMap::new())),
             copilot_tokens: Arc::new(RwLock::new(HashMap::new())),
+            copilot_models: Arc::new(RwLock::new(HashMap::new())),
             http_client: Client::new(),
             storage_path,
             pending_migration: Arc::new(RwLock::new(None)),
@@ -339,7 +342,7 @@ impl CopilotAuthManager {
 
         // 尝试从磁盘加载（同步，不发起网络请求）
         if let Err(e) = manager.load_from_disk_sync() {
-            log::warn!("[CopilotAuth] 加载存储失败: {}", e);
+            log::warn!("[CopilotAuth] 加载存储失败: {e}");
         }
 
         manager
@@ -362,7 +365,7 @@ impl CopilotAuthManager {
 
     /// 移除指定账号
     pub async fn remove_account(&self, account_id: &str) -> Result<(), CopilotAuthError> {
-        log::info!("[CopilotAuth] 移除账号: {}", account_id);
+        log::info!("[CopilotAuth] 移除账号: {account_id}");
 
         {
             let mut accounts = self.accounts.write().await;
@@ -375,6 +378,10 @@ impl CopilotAuthManager {
         {
             let mut tokens = self.copilot_tokens.write().await;
             tokens.remove(account_id);
+        }
+        {
+            let mut models = self.copilot_models.write().await;
+            models.remove(account_id);
         }
         {
             let mut refresh_locks = self.refresh_locks.write().await;
@@ -476,8 +483,7 @@ impl CopilotAuthManager {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
             return Err(CopilotAuthError::NetworkError(format!(
-                "GitHub 设备码请求失败: {} - {}",
-                status, text
+                "GitHub 设备码请求失败: {status} - {text}"
             )));
         }
 
@@ -575,10 +581,7 @@ impl CopilotAuthManager {
         }
 
         // 需要刷新
-        log::info!(
-            "[CopilotAuth] 账号 {} 的 Copilot Token 需要刷新",
-            account_id
-        );
+        log::info!("[CopilotAuth] 账号 {account_id} 的 Copilot Token 需要刷新");
 
         let refresh_lock = self.get_refresh_lock(account_id).await;
         let _refresh_guard = refresh_lock.lock().await;
@@ -631,14 +634,35 @@ impl CopilotAuthManager {
         &self,
         account_id: &str,
     ) -> Result<Vec<CopilotModel>, CopilotAuthError> {
+        self.ensure_migration_complete().await?;
+
+        {
+            let models = self.copilot_models.read().await;
+            if let Some(cached) = models.get(account_id) {
+                return Ok(cached.clone());
+            }
+        }
+
+        let models = self.fetch_models_for_account_uncached(account_id).await?;
+        {
+            let mut cache = self.copilot_models.write().await;
+            cache.insert(account_id.to_string(), models.clone());
+        }
+        Ok(models)
+    }
+
+    async fn fetch_models_for_account_uncached(
+        &self,
+        account_id: &str,
+    ) -> Result<Vec<CopilotModel>, CopilotAuthError> {
         let copilot_token = self.get_valid_token_for_account(account_id).await?;
 
-        log::info!("[CopilotAuth] 获取账号 {} 的 Copilot 可用模型", account_id);
+        log::info!("[CopilotAuth] 获取账号 {account_id} 的 Copilot 可用模型");
 
         let response = self
             .http_client
             .get(COPILOT_MODELS_URL)
-            .header("Authorization", format!("Bearer {}", copilot_token))
+            .header("Authorization", format!("Bearer {copilot_token}"))
             .header("Content-Type", "application/json")
             .header("copilot-integration-id", "vscode-chat")
             .header("editor-version", COPILOT_EDITOR_VERSION)
@@ -652,8 +676,7 @@ impl CopilotAuthManager {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
             return Err(CopilotAuthError::CopilotTokenFetchFailed(format!(
-                "获取模型列表失败: {} - {}",
-                status, text
+                "获取模型列表失败: {status} - {text}"
             )));
         }
 
@@ -679,10 +702,32 @@ impl CopilotAuthManager {
         Ok(models)
     }
 
+    pub async fn get_model_vendor_for_account(
+        &self,
+        account_id: &str,
+        model_id: &str,
+    ) -> Result<Option<String>, CopilotAuthError> {
+        let models = self.fetch_models_for_account(account_id).await?;
+        Ok(models
+            .into_iter()
+            .find(|model| model.id == model_id)
+            .map(|model| model.vendor))
+    }
+
     /// 获取 Copilot 可用模型列表（向后兼容：使用第一个账号）
     pub async fn fetch_models(&self) -> Result<Vec<CopilotModel>, CopilotAuthError> {
         match self.resolve_default_account_id().await {
             Some(id) => self.fetch_models_for_account(&id).await,
+            None => Err(CopilotAuthError::GitHubTokenInvalid),
+        }
+    }
+
+    pub async fn get_model_vendor(
+        &self,
+        model_id: &str,
+    ) -> Result<Option<String>, CopilotAuthError> {
+        match self.resolve_default_account_id().await {
+            Some(id) => self.get_model_vendor_for_account(&id, model_id).await,
             None => Err(CopilotAuthError::GitHubTokenInvalid),
         }
     }
@@ -700,12 +745,12 @@ impl CopilotAuthManager {
                 .ok_or_else(|| CopilotAuthError::AccountNotFound(account_id.to_string()))?
         };
 
-        log::info!("[CopilotAuth] 获取账号 {} 的 Copilot 使用量", account_id);
+        log::info!("[CopilotAuth] 获取账号 {account_id} 的 Copilot 使用量");
 
         let response = self
             .http_client
             .get(COPILOT_USAGE_URL)
-            .header("Authorization", format!("token {}", github_token))
+            .header("Authorization", format!("token {github_token}"))
             .header("Content-Type", "application/json")
             .header("editor-version", COPILOT_EDITOR_VERSION)
             .header("editor-plugin-version", COPILOT_PLUGIN_VERSION)
@@ -722,8 +767,7 @@ impl CopilotAuthManager {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
             return Err(CopilotAuthError::CopilotTokenFetchFailed(format!(
-                "获取使用量失败: {} - {}",
-                status, text
+                "获取使用量失败: {status} - {text}"
             )));
         }
 
@@ -951,7 +995,7 @@ impl CopilotAuthManager {
         let response = self
             .http_client
             .get(GITHUB_USER_URL)
-            .header("Authorization", format!("token {}", github_token))
+            .header("Authorization", format!("token {github_token}"))
             .header("User-Agent", COPILOT_USER_AGENT)
             .header("Editor-Version", COPILOT_EDITOR_VERSION)
             .header("Editor-Plugin-Version", COPILOT_PLUGIN_VERSION)
@@ -978,12 +1022,12 @@ impl CopilotAuthManager {
         github_token: &str,
         account_id: &str,
     ) -> Result<(), CopilotAuthError> {
-        log::debug!("[CopilotAuth] 获取账号 {} 的 Copilot Token", account_id);
+        log::debug!("[CopilotAuth] 获取账号 {account_id} 的 Copilot Token");
 
         let response = self
             .http_client
             .get(COPILOT_TOKEN_URL)
-            .header("Authorization", format!("token {}", github_token))
+            .header("Authorization", format!("token {github_token}"))
             .header("User-Agent", COPILOT_USER_AGENT)
             .header("Editor-Version", COPILOT_EDITOR_VERSION)
             .header("Editor-Plugin-Version", COPILOT_PLUGIN_VERSION)
@@ -1002,8 +1046,7 @@ impl CopilotAuthManager {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
             return Err(CopilotAuthError::CopilotTokenFetchFailed(format!(
-                "{}: {}",
-                status, text
+                "{status}: {text}"
             )));
         }
 
@@ -1086,7 +1129,7 @@ impl CopilotAuthManager {
                         .fetch_copilot_token_with_github_token(&legacy_token, &account_id)
                         .await
                     {
-                        log::warn!("[CopilotAuth] 迁移时验证 Copilot 订阅失败: {}", e);
+                        log::warn!("[CopilotAuth] 迁移时验证 Copilot 订阅失败: {e}");
                     }
 
                     // 添加账号
@@ -1100,7 +1143,7 @@ impl CopilotAuthManager {
                         "Legacy Copilot auth migration failed: {e}"
                     )))
                     .await;
-                    log::warn!("[CopilotAuth] 迁移失败，旧 token 可能已失效: {}", e);
+                    log::warn!("[CopilotAuth] 迁移失败，旧 token 可能已失效: {e}");
                 }
             }
 
@@ -1144,6 +1187,7 @@ impl CopilotAuthManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
 
     #[test]
     fn test_copilot_token_expiry() {
@@ -1315,5 +1359,60 @@ mod tests {
             CopilotAuthManager::fallback_default_account_id(&accounts),
             Some("67890".to_string())
         );
+    }
+
+    #[tokio::test]
+    async fn test_get_model_vendor_from_cache() {
+        let temp_dir = tempdir().unwrap();
+        let manager = CopilotAuthManager::new(temp_dir.path().to_path_buf());
+
+        {
+            let mut default_account_id = manager.default_account_id.write().await;
+            *default_account_id = Some("12345".to_string());
+        }
+        {
+            let mut accounts = manager.accounts.write().await;
+            accounts.insert(
+                "12345".to_string(),
+                GitHubAccountData {
+                    github_token: "gho_test".to_string(),
+                    user: GitHubUser {
+                        login: "alice".to_string(),
+                        id: 12345,
+                        avatar_url: None,
+                    },
+                    authenticated_at: 1700000000,
+                },
+            );
+        }
+        {
+            let mut models = manager.copilot_models.write().await;
+            models.insert(
+                "12345".to_string(),
+                vec![
+                    CopilotModel {
+                        id: "gpt-5.4".to_string(),
+                        name: "GPT-5.4".to_string(),
+                        vendor: "OpenAI".to_string(),
+                        model_picker_enabled: true,
+                    },
+                    CopilotModel {
+                        id: "claude-sonnet-4".to_string(),
+                        name: "Claude Sonnet 4".to_string(),
+                        vendor: "Anthropic".to_string(),
+                        model_picker_enabled: true,
+                    },
+                ],
+            );
+        }
+
+        let vendor = manager
+            .get_model_vendor_for_account("12345", "gpt-5.4")
+            .await
+            .unwrap();
+        assert_eq!(vendor.as_deref(), Some("OpenAI"));
+
+        let default_vendor = manager.get_model_vendor("claude-sonnet-4").await.unwrap();
+        assert_eq!(default_vendor.as_deref(), Some("Anthropic"));
     }
 }

@@ -10,7 +10,7 @@ use futures::stream::Stream;
 use http_body_util::BodyExt;
 use hyper_rustls::HttpsConnectorBuilder;
 use hyper_util::{client::legacy::Client, rt::TokioExecutor};
-use std::sync::OnceLock;
+use std::sync::{Once, OnceLock};
 
 /// Our own header case map: maps lowercase header name → original wire-casing bytes.
 ///
@@ -55,10 +55,20 @@ type HyperClient = Client<
     http_body_util::Full<Bytes>,
 >;
 
+fn ensure_rustls_crypto_provider_installed() {
+    static INIT: Once = Once::new();
+    INIT.call_once(|| {
+        // 合并后新增的 hyper/tokio-rustls 路径不会自动选中进程级 CryptoProvider。
+        // Web/headless 模式一旦进入 TLS 转发，这里必须先显式安装 provider，避免运行时 panic。
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    });
+}
+
 /// Lazily-initialized hyper client with header-case preservation enabled.
 fn global_hyper_client() -> &'static HyperClient {
     static CLIENT: OnceLock<HyperClient> = OnceLock::new();
     CLIENT.get_or_init(|| {
+        ensure_rustls_crypto_provider_installed();
         let connector = HttpsConnectorBuilder::new()
             .with_webpki_roots()
             .https_or_http()
@@ -495,6 +505,7 @@ async fn connect_via_proxy(
 fn global_tls_connector() -> &'static tokio_rustls::TlsConnector {
     static CONNECTOR: OnceLock<tokio_rustls::TlsConnector> = OnceLock::new();
     CONNECTOR.get_or_init(|| {
+        ensure_rustls_crypto_provider_installed();
         let mut root_store = rustls::RootCertStore::empty();
         // Baseline: Mozilla/webpki roots
         root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
@@ -507,6 +518,18 @@ fn global_tls_connector() -> &'static tokio_rustls::TlsConnector {
             .with_no_client_auth();
         tokio_rustls::TlsConnector::from(std::sync::Arc::new(config))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tls_helpers_install_crypto_provider_without_panicking() {
+        ensure_rustls_crypto_provider_installed();
+        let _ = global_hyper_client();
+        let _ = global_tls_connector();
+    }
 }
 
 /// Build raw HTTP/1.1 request bytes with original header casing.

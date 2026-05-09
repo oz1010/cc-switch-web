@@ -524,7 +524,10 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
       ]);
       const formatted = await format(script.code, {
         parser: "babel",
-        plugins: [parserBabel.default ?? parserBabel, pluginEstree.default ?? pluginEstree],
+        plugins: [
+          parserBabel.default ?? parserBabel,
+          pluginEstree.default ?? pluginEstree,
+        ],
         semi: true,
         singleQuote: false,
         tabWidth: 2,

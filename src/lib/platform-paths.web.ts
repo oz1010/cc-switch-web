@@ -1,6 +1,8 @@
 import type { AppId } from "@/lib/api";
 
-export async function computeDefaultAppConfigDir(): Promise<string | undefined> {
+export async function computeDefaultAppConfigDir(): Promise<
+  string | undefined
+> {
   return undefined;
 }
 

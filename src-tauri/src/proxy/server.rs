@@ -55,11 +55,7 @@ pub struct ProxyServer {
 }
 
 impl ProxyServer {
-    pub fn new(
-        config: ProxyConfig,
-        db: Arc<Database>,
-        app_handle: Option<UiAppHandle>,
-    ) -> Self {
+    pub fn new(config: ProxyConfig, db: Arc<Database>, app_handle: Option<UiAppHandle>) -> Self {
         // 创建共享的 ProviderRouter（熔断器状态将跨所有请求保持）
         let provider_router = Arc::new(ProviderRouter::new(db.clone()));
         // 创建故障转移切换管理器

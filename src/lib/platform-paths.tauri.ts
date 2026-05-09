@@ -1,7 +1,9 @@
 import { homeDir, join } from "@tauri-apps/api/path";
 import type { AppId } from "@/lib/api";
 
-export async function computeDefaultAppConfigDir(): Promise<string | undefined> {
+export async function computeDefaultAppConfigDir(): Promise<
+  string | undefined
+> {
   try {
     const home = await homeDir();
     return await join(home, ".cc-switch");

@@ -99,16 +99,17 @@ impl Database {
         }
 
         let conn = Connection::open(&db_path).map_err(|e| {
-            AppError::Database(format!("open sqlite database {db_path_display} failed: {e}"))
+            AppError::Database(format!(
+                "open sqlite database {db_path_display} failed: {e}"
+            ))
         })?;
 
         // 启用外键约束
-        conn.execute("PRAGMA foreign_keys = ON;", [])
-            .map_err(|e| {
-                AppError::Database(format!(
-                    "enable foreign keys for {db_path_display} failed: {e}"
-                ))
-            })?;
+        conn.execute("PRAGMA foreign_keys = ON;", []).map_err(|e| {
+            AppError::Database(format!(
+                "enable foreign keys for {db_path_display} failed: {e}"
+            ))
+        })?;
         if !db_exists {
             // For a brand-new database, configure incremental auto-vacuum
             // before creating any tables so no rebuild is needed later.

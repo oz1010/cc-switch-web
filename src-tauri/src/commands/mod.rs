@@ -18,6 +18,7 @@ mod global_proxy;
 mod hermes;
 #[cfg(feature = "desktop")]
 mod import_export;
+mod lightweight;
 #[cfg(feature = "desktop")]
 mod mcp;
 mod misc;
@@ -40,7 +41,6 @@ pub mod skill;
 mod stream_check;
 mod subscription;
 mod sync_support;
-mod lightweight;
 mod usage;
 #[cfg(feature = "desktop")]
 mod webdav_sync;
@@ -65,6 +65,7 @@ pub use global_proxy::*;
 pub use hermes::*;
 #[cfg(feature = "desktop")]
 pub use import_export::*;
+pub use lightweight::*;
 #[cfg(feature = "desktop")]
 pub use mcp::*;
 pub use misc::*;
@@ -87,7 +88,6 @@ pub use skill::*;
 pub use stream_check::*;
 pub use subscription::*;
 pub use sync_support::*;
-pub use lightweight::*;
 pub use usage::*;
 #[cfg(feature = "desktop")]
 pub use webdav_sync::*;

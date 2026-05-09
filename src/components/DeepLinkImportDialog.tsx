@@ -56,9 +56,8 @@ export function DeepLinkImportDialog() {
         // If config is present, merge it to get the complete configuration
         if (payload.config || payload.configUrl) {
           try {
-            const mergedRequest = await deeplinkApi.mergeDeeplinkConfig(
-              payload,
-            );
+            const mergedRequest =
+              await deeplinkApi.mergeDeeplinkConfig(payload);
             setRequest(mergedRequest);
           } catch (error) {
             console.error("Failed to merge config:", error);

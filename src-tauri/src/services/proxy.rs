@@ -9,10 +9,10 @@ use crate::provider::Provider;
 use crate::proxy::server::ProxyServer;
 use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy::types::*;
-use crate::ui_runtime::UiAppHandle;
 use crate::services::provider::{
     build_effective_settings_with_common_config, write_live_with_common_config,
 };
+use crate::ui_runtime::UiAppHandle;
 use serde_json::{json, Value};
 use std::str::FromStr;
 use std::sync::Arc;

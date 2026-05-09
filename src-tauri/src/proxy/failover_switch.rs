@@ -9,8 +9,8 @@ use crate::database::Database;
 use crate::error::AppError;
 use crate::ui_runtime::UiAppHandle;
 use std::collections::HashSet;
-use std::sync::Arc;
 use std::str::FromStr;
+use std::sync::Arc;
 #[cfg(feature = "desktop")]
 use tauri::{Emitter, Manager};
 use tokio::sync::RwLock;
@@ -100,48 +100,46 @@ impl FailoverSwitchManager {
 
         let app_type_enum = crate::app_config::AppType::from_str(app_type)
             .map_err(|_| AppError::Message(format!("无效的应用类型: {app_type}")))?;
-        let logical_target_changed = crate::settings::get_effective_current_provider(
-            &self.db,
-            &app_type_enum,
-        )
-        .map_err(|e| AppError::Message(format!("读取当前供应商失败: {e}")))?
-        .as_deref()
-            != Some(provider_id);
+        let logical_target_changed =
+            crate::settings::get_effective_current_provider(&self.db, &app_type_enum)
+                .map_err(|e| AppError::Message(format!("读取当前供应商失败: {e}")))?
+                .as_deref()
+                != Some(provider_id);
 
         if let Some(app) = app_handle {
             #[cfg(feature = "desktop")]
             {
-            if let Some(app_state) = app.try_state::<crate::store::AppState>() {
-                let outcome = app_state
-                    .proxy_service
-                    .hot_switch_provider(app_type, provider_id)
-                    .await
-                    .map_err(AppError::Message)?;
+                if let Some(app_state) = app.try_state::<crate::store::AppState>() {
+                    let outcome = app_state
+                        .proxy_service
+                        .hot_switch_provider(app_type, provider_id)
+                        .await
+                        .map_err(AppError::Message)?;
 
-                if !outcome.logical_target_changed {
-                    return Ok(false);
-                }
+                    if !outcome.logical_target_changed {
+                        return Ok(false);
+                    }
 
-                if let Ok(new_menu) = crate::tray::create_tray_menu(app, app_state.inner()) {
-                    if let Some(tray) = app.tray_by_id(crate::tray::TRAY_ID) {
-                        if let Err(e) = tray.set_menu(Some(new_menu)) {
-                            log::error!("[Failover] 更新托盘菜单失败: {e}");
+                    if let Ok(new_menu) = crate::tray::create_tray_menu(app, app_state.inner()) {
+                        if let Some(tray) = app.tray_by_id(crate::tray::TRAY_ID) {
+                            if let Err(e) = tray.set_menu(Some(new_menu)) {
+                                log::error!("[Failover] 更新托盘菜单失败: {e}");
+                            }
                         }
                     }
+                } else {
+                    crate::settings::set_current_provider(&app_type_enum, Some(provider_id))?;
                 }
-            } else {
-                crate::settings::set_current_provider(&app_type_enum, Some(provider_id))?;
-            }
 
-            // 发射事件到前端
-            let event_data = serde_json::json!({
-                "appType": app_type,
-                "providerId": provider_id,
-                "source": "failover"
-            });
-            if let Err(e) = app.emit("provider-switched", event_data) {
-                log::error!("[Failover] 发射事件失败: {e}");
-            }
+                // 发射事件到前端
+                let event_data = serde_json::json!({
+                    "appType": app_type,
+                    "providerId": provider_id,
+                    "source": "failover"
+                });
+                if let Err(e) = app.emit("provider-switched", event_data) {
+                    log::error!("[Failover] 发射事件失败: {e}");
+                }
             }
             #[cfg(not(feature = "desktop"))]
             {

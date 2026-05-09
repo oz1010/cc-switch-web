@@ -39,9 +39,7 @@ export function useVirtualizer({
     scrollElement.addEventListener("scroll", bump, { passive: true });
 
     const observer =
-      typeof ResizeObserver !== "undefined"
-        ? new ResizeObserver(bump)
-        : null;
+      typeof ResizeObserver !== "undefined" ? new ResizeObserver(bump) : null;
     observer?.observe(scrollElement);
 
     return () => {

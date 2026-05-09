@@ -193,9 +193,7 @@ export function useProxyStatus() {
         error: detail,
         defaultValue: `切换失败: ${detail}`,
       });
-      toast.error(
-        fillMessageTemplate(message, { error: detail }),
-      );
+      toast.error(fillMessageTemplate(message, { error: detail }));
     },
   });
 

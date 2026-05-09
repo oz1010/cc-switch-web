@@ -7,7 +7,7 @@ export interface ApiTransport {
   invoke<T = unknown>(command: string, payload?: unknown): Promise<T>;
   listen<T = unknown>(
     event: string,
-    handler: (payload: T) => void
+    handler: (payload: T) => void,
   ): Promise<UnlistenFn>;
   debug?: (msg: string, data?: unknown) => void;
 }

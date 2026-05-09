@@ -1,11 +1,11 @@
-use std::str::FromStr;
 use crate::app_config::AppType;
 use crate::services::subscription::{CredentialStatus, SubscriptionQuota};
+use std::str::FromStr;
 
 #[cfg(feature = "desktop")]
 use {
-    tauri::{Emitter, State},
     crate::store::AppState,
+    tauri::{Emitter, State},
 };
 
 /// 查询官方订阅额度

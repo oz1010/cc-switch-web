@@ -17,11 +17,9 @@ pub async fn get_session_messages(
 ) -> Result<Vec<session_manager::SessionMessage>, String> {
     let provider_id = providerId.clone();
     let source_path = sourcePath.clone();
-    tokio::task::spawn_blocking(move || {
-        session_manager::load_messages(&provider_id, &source_path)
-    })
-    .await
-    .map_err(|e| format!("Failed to load session messages: {e}"))?
+    tokio::task::spawn_blocking(move || session_manager::load_messages(&provider_id, &source_path))
+        .await
+        .map_err(|e| format!("Failed to load session messages: {e}"))?
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]

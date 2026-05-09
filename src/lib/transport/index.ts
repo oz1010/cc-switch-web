@@ -14,14 +14,14 @@ export function getTransport(): ApiTransport {
 
 export function invoke<T = unknown>(
   command: string,
-  payload?: unknown
+  payload?: unknown,
 ): Promise<T> {
   return getTransport().invoke<T>(command, payload);
 }
 
 export function listen<T = unknown>(
   event: string,
-  handler: (payload: T) => void
+  handler: (payload: T) => void,
 ): Promise<UnlistenFn> {
   return getTransport().listen<T>(event, handler);
 }

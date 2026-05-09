@@ -38,7 +38,9 @@ export function buildDefaultExportFileName(date = new Date()): string {
   return `cc-switch-export-${buildExportStamp(date)}.sql`;
 }
 
-function extractDownloadFileName(contentDisposition: string | null): string | null {
+function extractDownloadFileName(
+  contentDisposition: string | null,
+): string | null {
   if (!contentDisposition) return null;
 
   const utf8Match = /filename\*=UTF-8''([^;]+)/i.exec(contentDisposition);
@@ -60,9 +62,9 @@ function extractDownloadFileName(contentDisposition: string | null): string | nu
 }
 
 async function extractErrorMessage(response: Response): Promise<string> {
-  const result = (await response.json().catch(() => null)) as
-    | { message?: string }
-    | null;
+  const result = (await response.json().catch(() => null)) as {
+    message?: string;
+  } | null;
   return result?.message || `Request failed with status ${response.status}`;
 }
 
@@ -188,7 +190,9 @@ export const settingsApi = {
       | null;
 
     if (!response.ok) {
-      throw new Error(result?.message || `Upload failed with status ${response.status}`);
+      throw new Error(
+        result?.message || `Upload failed with status ${response.status}`,
+      );
     }
 
     return result as ConfigTransferResult;

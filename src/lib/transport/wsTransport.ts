@@ -143,7 +143,7 @@ class JsonRpcWebSocketClient {
         .catch(() => {
           this.reconnectDelay = Math.min(
             this.reconnectDelay * 2,
-            this.maxReconnectDelay
+            this.maxReconnectDelay,
           );
         });
     }, this.reconnectDelay);
@@ -188,7 +188,7 @@ class JsonRpcWebSocketClient {
 
   async subscribe<T>(
     event: string,
-    handler: (payload: T) => void
+    handler: (payload: T) => void,
   ): Promise<UnlistenFn> {
     await this.connect();
 
@@ -275,7 +275,7 @@ export const WebSocketTransport: ApiTransport = {
 
   async listen<T = unknown>(
     event: string,
-    handler: (payload: T) => void
+    handler: (payload: T) => void,
   ): Promise<UnlistenFn> {
     return getWsClient().subscribe<T>(event, handler);
   },

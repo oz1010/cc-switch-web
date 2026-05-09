@@ -64,8 +64,7 @@ export function ImportExportSection({
         <p className="text-sm text-muted-foreground">
           {isWebMode
             ? t("settings.importExportHintWeb", {
-                defaultValue:
-                  "Web 模式通过浏览器直接上传或下载 SQL 备份。",
+                defaultValue: "Web 模式通过浏览器直接上传或下载 SQL 备份。",
               })
             : t("settings.importExportHint")}
         </p>

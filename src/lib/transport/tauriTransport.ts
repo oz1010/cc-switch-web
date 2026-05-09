@@ -11,7 +11,7 @@ export const TauriTransport: ApiTransport = {
 
   async listen<T = unknown>(
     event: string,
-    handler: (payload: T) => void
+    handler: (payload: T) => void,
   ): Promise<UnlistenFn> {
     const unlisten = await tauriListen<T>(event, (evt) => {
       handler(evt.payload);

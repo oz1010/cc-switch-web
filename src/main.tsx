@@ -30,9 +30,12 @@ async function bootstrap() {
   await i18nReady;
 
   try {
-    await listen<ConfigLoadErrorPayload | null>("configLoadError", async (payload) => {
-      await handleFatalConfigLoadError(payload);
-    });
+    await listen<ConfigLoadErrorPayload | null>(
+      "configLoadError",
+      async (payload) => {
+        await handleFatalConfigLoadError(payload);
+      },
+    );
   } catch (e) {
     console.error("订阅 configLoadError 事件失败", e);
   }

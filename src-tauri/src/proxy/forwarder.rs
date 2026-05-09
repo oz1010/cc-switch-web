@@ -20,13 +20,13 @@ use super::{
     types::{CopilotOptimizerConfig, OptimizerConfig, ProxyStatus, RectifierConfig},
     ProxyError,
 };
-use crate::ui_runtime::UiAppHandle;
 #[cfg(feature = "desktop")]
 use crate::commands::{CodexOAuthState, CopilotAuthState};
 #[cfg(feature = "desktop")]
 use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;
 #[cfg(feature = "desktop")]
 use crate::proxy::providers::copilot_auth::CopilotAuthManager;
+use crate::ui_runtime::UiAppHandle;
 use crate::{app_config::AppType, provider::Provider};
 use http::Extensions;
 use serde_json::Value;
@@ -1569,32 +1569,32 @@ impl RequestForwarder {
         };
         #[cfg(feature = "desktop")]
         {
-        let copilot_state = app_handle.state::<CopilotAuthState>();
-        let copilot_auth = copilot_state.0.read().await;
-        let account_id = provider
-            .meta
-            .as_ref()
-            .and_then(|m| m.managed_account_id_for("github_copilot"));
+            let copilot_state = app_handle.state::<CopilotAuthState>();
+            let copilot_auth = copilot_state.0.read().await;
+            let account_id = provider
+                .meta
+                .as_ref()
+                .and_then(|m| m.managed_account_id_for("github_copilot"));
 
-        let models_result = match account_id.as_deref() {
-            Some(id) => copilot_auth.fetch_models_for_account(id).await,
-            None => copilot_auth.fetch_models().await,
-        };
+            let models_result = match account_id.as_deref() {
+                Some(id) => copilot_auth.fetch_models_for_account(id).await,
+                None => copilot_auth.fetch_models().await,
+            };
 
-        let models = match models_result {
-            Ok(m) => m,
-            Err(err) => {
-                log::debug!("[Copilot] live model list unavailable, skip resolution: {err}");
-                return;
+            let models = match models_result {
+                Ok(m) => m,
+                Err(err) => {
+                    log::debug!("[Copilot] live model list unavailable, skip resolution: {err}");
+                    return;
+                }
+            };
+
+            if let Some(resolved) =
+                super::providers::copilot_model_map::resolve_against_models(&model_id, &models)
+            {
+                log::info!("[Copilot] live-model resolve: {model_id} → {resolved}");
+                body["model"] = serde_json::Value::String(resolved);
             }
-        };
-
-        if let Some(resolved) =
-            super::providers::copilot_model_map::resolve_against_models(&model_id, &models)
-        {
-            log::info!("[Copilot] live-model resolve: {model_id} → {resolved}");
-            body["model"] = serde_json::Value::String(resolved);
-        }
         }
     }
 
@@ -1602,50 +1602,48 @@ impl RequestForwarder {
         #[cfg(not(feature = "desktop"))]
         {
             let _ = (provider, model_id);
-            log::debug!(
-                "[Copilot] headless 模式无法查询 vendor，fallback 到 chat/completions"
-            );
+            log::debug!("[Copilot] headless 模式无法查询 vendor，fallback 到 chat/completions");
             return false;
         }
 
         #[cfg(feature = "desktop")]
         {
-        let Some(app_handle) = &self.app_handle else {
-            log::debug!("[Copilot] AppHandle unavailable, fallback to chat/completions");
-            return false;
-        };
+            let Some(app_handle) = &self.app_handle else {
+                log::debug!("[Copilot] AppHandle unavailable, fallback to chat/completions");
+                return false;
+            };
 
-        let copilot_state = app_handle.state::<CopilotAuthState>();
-        let copilot_auth = copilot_state.0.read().await;
-        let account_id = provider
-            .meta
-            .as_ref()
-            .and_then(|m| m.managed_account_id_for("github_copilot"));
+            let copilot_state = app_handle.state::<CopilotAuthState>();
+            let copilot_auth = copilot_state.0.read().await;
+            let account_id = provider
+                .meta
+                .as_ref()
+                .and_then(|m| m.managed_account_id_for("github_copilot"));
 
-        let vendor_result = match account_id.as_deref() {
-            Some(id) => {
-                copilot_auth
-                    .get_model_vendor_for_account(id, model_id)
-                    .await
-            }
-            None => copilot_auth.get_model_vendor(model_id).await,
-        };
+            let vendor_result = match account_id.as_deref() {
+                Some(id) => {
+                    copilot_auth
+                        .get_model_vendor_for_account(id, model_id)
+                        .await
+                }
+                None => copilot_auth.get_model_vendor(model_id).await,
+            };
 
-        match vendor_result {
-            Ok(Some(vendor)) => vendor.eq_ignore_ascii_case("openai"),
-            Ok(None) => {
-                log::debug!(
+            match vendor_result {
+                Ok(Some(vendor)) => vendor.eq_ignore_ascii_case("openai"),
+                Ok(None) => {
+                    log::debug!(
                     "[Copilot] Model vendor unavailable for {model_id}, fallback to chat/completions"
                 );
-                false
-            }
-            Err(err) => {
-                log::warn!(
+                    false
+                }
+                Err(err) => {
+                    log::warn!(
                     "[Copilot] Failed to resolve model vendor for {model_id}, fallback to chat/completions: {err}"
                 );
-                false
+                    false
+                }
             }
-        }
         }
     }
 

@@ -40,7 +40,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       } catch (err) {
         console.error("[Auth] Failed to initialize auth:", err);
-        setError(err instanceof Error ? err.message : "Auth initialization failed");
+        setError(
+          err instanceof Error ? err.message : "Auth initialization failed",
+        );
         setAuthEnabled(false);
         setIsAuthenticated(true);
       } finally {

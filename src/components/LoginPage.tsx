@@ -25,7 +25,9 @@ export function LoginPage() {
     setLocalError(null);
 
     if (!password.trim()) {
-      setLocalError(t("auth.passwordRequired", { defaultValue: "Please enter password" }));
+      setLocalError(
+        t("auth.passwordRequired", { defaultValue: "Please enter password" }),
+      );
       return;
     }
 
@@ -52,7 +54,9 @@ export function LoginPage() {
           </div>
           <CardTitle className="text-xl">CC Switch</CardTitle>
           <CardDescription>
-            {t("auth.loginDescription", { defaultValue: "Enter password to continue" })}
+            {t("auth.loginDescription", {
+              defaultValue: "Enter password to continue",
+            })}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -66,7 +70,9 @@ export function LoginPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder={t("auth.passwordPlaceholder", { defaultValue: "Enter password" })}
+                placeholder={t("auth.passwordPlaceholder", {
+                  defaultValue: "Enter password",
+                })}
                 disabled={isSubmitting}
                 autoFocus
                 autoComplete="current-password"

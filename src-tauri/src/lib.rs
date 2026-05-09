@@ -13,8 +13,8 @@ mod error;
 mod gemini_config;
 mod gemini_mcp;
 pub mod hermes_config;
-mod init_status;
 mod import_export_support;
+mod init_status;
 #[cfg(feature = "desktop")]
 mod lightweight;
 #[cfg(target_os = "linux")]
@@ -59,6 +59,7 @@ pub use deeplink::{
     import_skill_from_deeplink, parse_and_merge_config, parse_deeplink_url, DeepLinkImportRequest,
 };
 pub use error::AppError;
+pub use import_export_support::*;
 pub use init_status::SkillsMigrationPayload;
 pub use mcp::{
     import_from_claude, import_from_codex, import_from_gemini, remove_server_from_claude,
@@ -97,7 +98,6 @@ pub use services::{
     ConfigService, EndpointLatency, McpService, PromptService, ProviderService, ProxyService,
     SkillService, SpeedtestService,
 };
-pub use import_export_support::*;
 pub use session_manager::{SessionMessage, SessionMeta};
 pub use settings::{
     get_settings, get_webdav_sync_settings, reload_settings, set_webdav_sync_settings,

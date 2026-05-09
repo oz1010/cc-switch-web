@@ -38,7 +38,7 @@ export const HttpTransport: ApiTransport = {
 
   async listen<T = unknown>(
     _event: string,
-    _handler: (payload: T) => void
+    _handler: (payload: T) => void,
   ): Promise<UnlistenFn> {
     console.warn("[HttpTransport] listen() not supported, returning no-op");
     return () => {};

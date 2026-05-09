@@ -39,4 +39,8 @@ export interface CheckOptions {
   channel?: UpdateChannel;
 }
 
-export { checkForUpdate, getCurrentVersion, relaunchApp } from "@platform/updater-impl";
+export {
+  checkForUpdate,
+  getCurrentVersion,
+  relaunchApp,
+} from "@platform/updater-impl";

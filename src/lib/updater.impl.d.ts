@@ -1,9 +1,5 @@
 declare module "@platform/updater-impl" {
-  import type {
-    CheckOptions,
-    UpdateHandle,
-    UpdateInfo,
-  } from "@/lib/updater";
+  import type { CheckOptions, UpdateHandle, UpdateInfo } from "@/lib/updater";
 
   export function getCurrentVersion(): Promise<string>;
   export function checkForUpdate(

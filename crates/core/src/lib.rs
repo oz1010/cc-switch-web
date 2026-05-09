@@ -4,30 +4,45 @@
 //! 当前实现基于现有的 `cc_switch`（src-tauri）进行轻量封装，
 //! 后续可以逐步将纯业务逻辑下沉到本 crate。
 
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::{collections::HashMap, path::Path};
+use std::{
+    collections::HashMap,
+    net::{SocketAddr, TcpStream},
+    path::Path,
+    time::Duration,
+};
 
 use cc_switch::{
-    default_sql_export_file_name, export_database_sql, export_database_to_file,
-    import_database_with_sync, AppError, AppSettings, AppState, AppType, Database,
-    EndpointLatency, McpServer, Provider, ProviderService, SkillService, SpeedtestService,
+    default_sql_export_file_name, export_database_sql, export_database_to_file, AppError,
+    AppSettings, AppState, AppType, Database, EndpointLatency, McpServer, Provider,
+    ProviderService, SkillService, SpeedtestService,
 };
 use chrono::Utc;
 use indexmap::IndexMap;
+use tokio::sync::RwLock;
 
 /// 对外暴露的核心类型别名，便于直接使用
 pub use cc_switch::{
-    AppSettings as CoreAppSettings, AppType as CoreAppType, BackupEntry, ConfigStatus, DailyStats,
-    DiscoverableSkill, HealthStatus, ImportSkillSelection, LogConfig, LogFilters,
-    McpServer as CoreMcpServer,
-    ModelPricingInfo as CoreModelPricingInfo, ModelStats, OmoLocalFileData, OpenClawAgentsDefaults,
-    OpenClawDefaultModel, OpenClawEnvConfig, OpenClawModelCatalogEntry, OpenClawToolsConfig,
-    OptimizerConfig, PaginatedLogs, Provider as CoreProvider, ProviderLimitStatus, ProviderStats,
-    RectifierConfig, RequestLogDetail, SkillRepo, SkillsMigrationPayload, StreamCheckConfig,
-    StreamCheckResult, StreamCheckService, UniversalProvider, UsageSummary, WebDavSyncSettings,
-    WslShellPreferenceInput, WEB_COMPAT_TAURI_COMMANDS,
+    AppSettings as CoreAppSettings, AppType as CoreAppType, BackupEntry, ClaudeDesktopDefaultRoute,
+    ClaudeDesktopStatus, CodexOAuthManager, CodexOAuthStatus, ConfigStatus, CopilotAuthManager,
+    CopilotAuthStatus, CopilotModel, CopilotUsageResponse, CredentialStatus, DailyStats,
+    DataSourceSummary, DeleteSessionOutcome, DeleteSessionRequest, DiscoverableSkill, FetchedModel,
+    GitHubAccount, GitHubDeviceCodeResponse, HealthStatus, HermesMemoryLimits, HermesModelConfig,
+    HermesWriteOutcome, ImportSkillSelection, LogConfig, LogFilters, McpServer as CoreMcpServer,
+    MemoryKind, ModelPricingInfo as CoreModelPricingInfo, ModelStats, OmoLocalFileData,
+    OpenClawAgentsDefaults, OpenClawDefaultModel, OpenClawEnvConfig, OpenClawModelCatalogEntry,
+    OpenClawToolsConfig, OptimizerConfig, PaginatedLogs, Provider as CoreProvider,
+    ProviderLimitStatus, ProviderStats, RectifierConfig, RequestLogDetail, SessionSyncResult,
+    SkillBackupEntry, SkillMigrationResult, SkillRepo, SkillStorageLocation, SkillUpdateInfo,
+    SkillsMigrationPayload, SkillsShSearchResult, StreamCheckConfig, StreamCheckResult,
+    StreamCheckService, SubscriptionQuota, UniversalProvider, UsageResult, UsageSummary,
+    WebDavSyncSettings, WslShellPreferenceInput, WEB_COMPAT_TAURI_COMMANDS,
 };
+
+const AUTH_PROVIDER_GITHUB_COPILOT: &str = "github_copilot";
+const AUTH_PROVIDER_CODEX_OAUTH: &str = "codex_oauth";
 
 /// 核心上下文
 ///
@@ -36,6 +51,8 @@ pub use cc_switch::{
 pub struct CoreContext {
     app_state: AppState,
     skill_service: Option<Arc<SkillService>>,
+    copilot_auth_manager: Arc<RwLock<CopilotAuthManager>>,
+    codex_oauth_manager: Arc<RwLock<CodexOAuthManager>>,
 }
 
 impl CoreContext {
@@ -47,12 +64,17 @@ impl CoreContext {
     pub fn new() -> Result<Self, AppError> {
         let db = Arc::new(Database::init()?);
         let app_state = AppState::new(db);
+        let app_config_dir = cc_switch::get_app_config_dir();
 
         let skill_service = Some(Arc::new(SkillService::new()));
 
         Ok(Self {
             app_state,
             skill_service,
+            copilot_auth_manager: Arc::new(RwLock::new(CopilotAuthManager::new(
+                app_config_dir.clone(),
+            ))),
+            codex_oauth_manager: Arc::new(RwLock::new(CodexOAuthManager::new(app_config_dir))),
         })
     }
 
@@ -62,10 +84,15 @@ impl CoreContext {
     }
 
     pub fn from_app_state(app_state: AppState) -> Self {
+        let app_config_dir = cc_switch::get_app_config_dir();
         let skill_service = Some(Arc::new(SkillService::new()));
         Self {
             app_state,
             skill_service,
+            copilot_auth_manager: Arc::new(RwLock::new(CopilotAuthManager::new(
+                app_config_dir.clone(),
+            ))),
+            codex_oauth_manager: Arc::new(RwLock::new(CodexOAuthManager::new(app_config_dir))),
         }
     }
 
@@ -73,6 +100,126 @@ impl CoreContext {
     pub fn skill_service(&self) -> Option<&Arc<SkillService>> {
         self.skill_service.as_ref()
     }
+
+    pub fn app_config_dir(&self) -> PathBuf {
+        cc_switch::get_app_config_dir()
+    }
+}
+
+fn ensure_auth_provider(auth_provider: &str) -> Result<&'static str, String> {
+    match auth_provider {
+        AUTH_PROVIDER_GITHUB_COPILOT => Ok(AUTH_PROVIDER_GITHUB_COPILOT),
+        AUTH_PROVIDER_CODEX_OAUTH => Ok(AUTH_PROVIDER_CODEX_OAUTH),
+        _ => Err(format!("Unsupported auth provider: {auth_provider}")),
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ManagedAuthAccount {
+    pub id: String,
+    pub provider: String,
+    pub login: String,
+    pub avatar_url: Option<String>,
+    pub authenticated_at: i64,
+    pub is_default: bool,
+    pub github_domain: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ManagedAuthStatus {
+    pub provider: String,
+    pub authenticated: bool,
+    pub default_account_id: Option<String>,
+    pub migration_error: Option<String>,
+    pub accounts: Vec<ManagedAuthAccount>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ManagedAuthDeviceCodeResponse {
+    pub provider: String,
+    pub device_code: String,
+    pub user_code: String,
+    pub verification_uri: String,
+    pub expires_in: u64,
+    pub interval: u64,
+}
+
+fn map_account(
+    provider: &str,
+    account: GitHubAccount,
+    default_account_id: Option<&str>,
+) -> ManagedAuthAccount {
+    ManagedAuthAccount {
+        is_default: default_account_id == Some(account.id.as_str()),
+        id: account.id,
+        provider: provider.to_string(),
+        login: account.login,
+        avatar_url: account.avatar_url,
+        authenticated_at: account.authenticated_at,
+        github_domain: account.github_domain,
+    }
+}
+
+fn map_device_code_response(
+    provider: &str,
+    response: GitHubDeviceCodeResponse,
+) -> ManagedAuthDeviceCodeResponse {
+    ManagedAuthDeviceCodeResponse {
+        provider: provider.to_string(),
+        device_code: response.device_code,
+        user_code: response.user_code,
+        verification_uri: response.verification_uri,
+        expires_in: response.expires_in,
+        interval: response.interval,
+    }
+}
+
+fn import_database_with_post_sync<F>(
+    db: Arc<Database>,
+    import: F,
+) -> Result<serde_json::Value, AppError>
+where
+    F: FnOnce(&Database) -> Result<String, AppError>,
+{
+    let db_for_sync = db.clone();
+    let backup_id = import(&db)?;
+
+    let warning = match ProviderService::sync_current_to_live(&AppState::new(db_for_sync.clone())) {
+        Ok(()) => match cc_switch::reload_settings() {
+            Ok(()) => None,
+            Err(err) => Some(
+                AppError::localized(
+                    "sync.post_operation_sync_failed",
+                    format!("后置同步状态失败: {err}"),
+                    format!("Post-operation synchronization failed: {err}"),
+                )
+                .to_string(),
+            ),
+        },
+        Err(err) => Some(
+            AppError::localized(
+                "sync.post_operation_sync_failed",
+                format!("后置同步状态失败: {err}"),
+                format!("Post-operation synchronization failed: {err}"),
+            )
+            .to_string(),
+        ),
+    };
+
+    let mut payload = serde_json::json!({
+        "success": true,
+        "message": "SQL imported successfully",
+        "backupId": backup_id,
+    });
+
+    if let Some(message) = warning {
+        log::warn!("[Import] post-import sync warning: {message}");
+        if let Some(obj) = payload.as_object_mut() {
+            obj.insert("warning".to_string(), serde_json::Value::String(message));
+        }
+    }
+
+    Ok(payload)
 }
 
 // ========================
@@ -188,6 +335,618 @@ pub fn read_live_provider_settings(app: &str) -> Result<serde_json::Value, Strin
     ProviderService::read_live_settings(app_type).map_err(|e| e.to_string())
 }
 
+pub async fn fetch_models_for_config(
+    base_url: &str,
+    api_key: &str,
+    is_full_url: bool,
+    models_url: Option<&str>,
+) -> Result<Vec<FetchedModel>, String> {
+    cc_switch::fetch_models(base_url, api_key, is_full_url, models_url).await
+}
+
+pub async fn get_subscription_quota(tool: &str) -> Result<SubscriptionQuota, String> {
+    cc_switch::fetch_subscription_quota(tool).await
+}
+
+pub async fn get_codex_oauth_quota(account_id: Option<&str>) -> Result<SubscriptionQuota, String> {
+    let manager = cc_switch::CodexOAuthManager::new(cc_switch::get_app_config_dir());
+    let resolved = match account_id {
+        Some(id) => Some(id.to_string()),
+        None => manager.default_account_id().await,
+    };
+    let Some(id) = resolved else {
+        return Ok(SubscriptionQuota {
+            tool: "codex_oauth".to_string(),
+            credential_status: CredentialStatus::NotFound,
+            credential_message: None,
+            success: false,
+            tiers: vec![],
+            extra_usage: None,
+            error: None,
+            queried_at: None,
+        });
+    };
+
+    let token = match manager.get_valid_token_for_account(&id).await {
+        Ok(token) => token.to_owned(),
+        Err(err) => {
+            let message = format!("Codex OAuth token unavailable: {err}");
+            return Ok(SubscriptionQuota {
+                tool: "codex_oauth".to_string(),
+                credential_status: CredentialStatus::Expired,
+                credential_message: Some(message.clone()),
+                success: false,
+                tiers: vec![],
+                extra_usage: None,
+                error: Some(message),
+                queried_at: Some(Utc::now().timestamp_millis()),
+            });
+        }
+    };
+
+    Ok(cc_switch::query_codex_quota(
+        &token,
+        Some(&id),
+        "codex_oauth",
+        "Codex OAuth access token expired or rejected. Please re-login via cc-switch.",
+    )
+    .await)
+}
+
+pub async fn get_coding_plan_quota(
+    base_url: &str,
+    api_key: &str,
+) -> Result<SubscriptionQuota, String> {
+    cc_switch::fetch_coding_plan_quota(base_url, api_key).await
+}
+
+pub async fn get_balance(base_url: &str, api_key: &str) -> Result<UsageResult, String> {
+    cc_switch::fetch_balance(base_url, api_key).await
+}
+
+pub fn import_hermes_providers_from_live(ctx: &CoreContext) -> Result<usize, String> {
+    cc_switch::import_hermes_providers_from_live(ctx.app_state()).map_err(|e| e.to_string())
+}
+
+pub async fn get_claude_desktop_status(ctx: &CoreContext) -> Result<ClaudeDesktopStatus, String> {
+    let proxy_running = ctx.app_state().proxy_service.is_running().await;
+    cc_switch::get_claude_desktop_status_raw(ctx.app_state().db.as_ref(), proxy_running)
+        .map_err(|e| e.to_string())
+}
+
+pub fn get_claude_desktop_default_routes() -> Vec<ClaudeDesktopDefaultRoute> {
+    cc_switch::get_claude_desktop_default_routes_raw()
+}
+
+pub fn import_claude_desktop_providers_from_claude(ctx: &CoreContext) -> Result<usize, String> {
+    let claude_providers = ctx
+        .app_state()
+        .db
+        .get_all_providers(AppType::Claude.as_str())
+        .map_err(|e| e.to_string())?;
+    let existing_ids = ctx
+        .app_state()
+        .db
+        .get_provider_ids(AppType::ClaudeDesktop.as_str())
+        .map_err(|e| e.to_string())?;
+
+    let mut imported = 0usize;
+    for provider in claude_providers.values() {
+        if existing_ids.contains(&provider.id) {
+            continue;
+        }
+
+        if matches!(
+            provider
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.provider_type.as_deref()),
+            Some("github_copilot") | Some("codex_oauth")
+        ) {
+            continue;
+        }
+
+        let mut desktop_provider = provider.clone();
+        desktop_provider.in_failover_queue = false;
+        let meta = desktop_provider.meta.get_or_insert_with(Default::default);
+
+        if cc_switch::is_compatible_direct_provider(provider)
+            && claude_provider_models_are_claude_safe(provider)
+        {
+            meta.claude_desktop_mode = Some(cc_switch::ClaudeDesktopMode::Direct);
+        } else if let Some(routes) = suggested_claude_desktop_routes(provider) {
+            meta.claude_desktop_mode = Some(cc_switch::ClaudeDesktopMode::Proxy);
+            meta.claude_desktop_model_routes = routes;
+        } else {
+            continue;
+        }
+
+        ctx.app_state()
+            .db
+            .save_provider(AppType::ClaudeDesktop.as_str(), &desktop_provider)
+            .map_err(|e| e.to_string())?;
+        imported += 1;
+    }
+
+    Ok(imported)
+}
+
+pub fn get_hermes_live_provider_ids() -> Result<Vec<String>, String> {
+    cc_switch::hermes_config::get_providers()
+        .map(|providers| providers.keys().cloned().collect())
+        .map_err(|e| e.to_string())
+}
+
+pub fn get_hermes_model_config() -> Result<Option<HermesModelConfig>, String> {
+    cc_switch::hermes_config::get_model_config().map_err(|e| e.to_string())
+}
+
+pub fn get_hermes_memory(kind: MemoryKind) -> Result<String, String> {
+    cc_switch::hermes_config::read_memory(kind).map_err(|e| e.to_string())
+}
+
+pub fn set_hermes_memory(kind: MemoryKind, content: &str) -> Result<(), String> {
+    cc_switch::hermes_config::write_memory(kind, content).map_err(|e| e.to_string())
+}
+
+pub fn get_hermes_memory_limits() -> Result<HermesMemoryLimits, String> {
+    cc_switch::hermes_config::read_memory_limits().map_err(|e| e.to_string())
+}
+
+pub fn set_hermes_memory_enabled(
+    kind: MemoryKind,
+    enabled: bool,
+) -> Result<HermesWriteOutcome, String> {
+    cc_switch::hermes_config::set_memory_enabled(kind, enabled).map_err(|e| e.to_string())
+}
+
+pub fn open_hermes_web_ui(path: Option<&str>) -> Result<String, String> {
+    const HERMES_WEB_OFFLINE_ERROR: &str = "hermes_web_offline";
+
+    let port = std::env::var("HERMES_WEB_PORT")
+        .ok()
+        .and_then(|raw| raw.trim().parse::<u16>().ok())
+        .unwrap_or(9119);
+    let probe_addr = SocketAddr::from(([127, 0, 0, 1], port));
+    TcpStream::connect_timeout(&probe_addr, Duration::from_millis(1200))
+        .map_err(|_| HERMES_WEB_OFFLINE_ERROR.to_string())?;
+
+    let base = format!("http://127.0.0.1:{port}");
+    let target = match path {
+        Some(p) if p.starts_with('/') => format!("{base}{p}"),
+        Some(p) if !p.is_empty() => format!("{base}/{p}"),
+        _ => format!("{base}/"),
+    };
+    Ok(target)
+}
+
+pub fn launch_hermes_dashboard() -> Result<bool, String> {
+    cc_switch::launch_terminal_command("hermes dashboard", "hermes_dashboard")?;
+    Ok(true)
+}
+
+pub async fn auth_start_login(
+    ctx: &CoreContext,
+    auth_provider: &str,
+    github_domain: Option<&str>,
+) -> Result<ManagedAuthDeviceCodeResponse, String> {
+    let auth_provider = ensure_auth_provider(auth_provider)?;
+    match auth_provider {
+        AUTH_PROVIDER_GITHUB_COPILOT => {
+            let auth_manager = ctx.copilot_auth_manager.read().await;
+            let response = auth_manager
+                .start_device_flow(github_domain)
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(map_device_code_response(auth_provider, response))
+        }
+        AUTH_PROVIDER_CODEX_OAUTH => {
+            let auth_manager = ctx.codex_oauth_manager.read().await;
+            let response = auth_manager
+                .start_device_flow()
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(map_device_code_response(auth_provider, response))
+        }
+        _ => unreachable!(),
+    }
+}
+
+pub async fn auth_poll_for_account(
+    ctx: &CoreContext,
+    auth_provider: &str,
+    device_code: &str,
+    github_domain: Option<&str>,
+) -> Result<Option<ManagedAuthAccount>, String> {
+    let auth_provider = ensure_auth_provider(auth_provider)?;
+    match auth_provider {
+        AUTH_PROVIDER_GITHUB_COPILOT => {
+            let auth_manager = ctx.copilot_auth_manager.write().await;
+            match auth_manager
+                .poll_for_token(device_code, github_domain)
+                .await
+            {
+                Ok(account) => {
+                    let default_account_id = auth_manager.get_status().await.default_account_id;
+                    Ok(account.map(|account| {
+                        map_account(auth_provider, account, default_account_id.as_deref())
+                    }))
+                }
+                Err(cc_switch::CopilotAuthError::AuthorizationPending) => Ok(None),
+                Err(e) => Err(e.to_string()),
+            }
+        }
+        AUTH_PROVIDER_CODEX_OAUTH => {
+            let auth_manager = ctx.codex_oauth_manager.write().await;
+            match auth_manager.poll_for_token(device_code).await {
+                Ok(account) => {
+                    let default_account_id = auth_manager.get_status().await.default_account_id;
+                    Ok(account.map(|account| {
+                        map_account(auth_provider, account, default_account_id.as_deref())
+                    }))
+                }
+                Err(cc_switch::CodexOAuthError::AuthorizationPending) => Ok(None),
+                Err(e) => Err(e.to_string()),
+            }
+        }
+        _ => unreachable!(),
+    }
+}
+
+pub async fn auth_list_accounts(
+    ctx: &CoreContext,
+    auth_provider: &str,
+) -> Result<Vec<ManagedAuthAccount>, String> {
+    let auth_provider = ensure_auth_provider(auth_provider)?;
+    match auth_provider {
+        AUTH_PROVIDER_GITHUB_COPILOT => {
+            let auth_manager = ctx.copilot_auth_manager.read().await;
+            let status = auth_manager.get_status().await;
+            let default_account_id = status.default_account_id.clone();
+            Ok(status
+                .accounts
+                .into_iter()
+                .map(|account| map_account(auth_provider, account, default_account_id.as_deref()))
+                .collect())
+        }
+        AUTH_PROVIDER_CODEX_OAUTH => {
+            let auth_manager = ctx.codex_oauth_manager.read().await;
+            let status = auth_manager.get_status().await;
+            let default_account_id = status.default_account_id.clone();
+            Ok(status
+                .accounts
+                .into_iter()
+                .map(|account| map_account(auth_provider, account, default_account_id.as_deref()))
+                .collect())
+        }
+        _ => unreachable!(),
+    }
+}
+
+pub async fn auth_get_status(
+    ctx: &CoreContext,
+    auth_provider: &str,
+) -> Result<ManagedAuthStatus, String> {
+    let auth_provider = ensure_auth_provider(auth_provider)?;
+    match auth_provider {
+        AUTH_PROVIDER_GITHUB_COPILOT => {
+            let auth_manager = ctx.copilot_auth_manager.read().await;
+            let status = auth_manager.get_status().await;
+            let default_account_id = status.default_account_id.clone();
+            Ok(ManagedAuthStatus {
+                provider: auth_provider.to_string(),
+                authenticated: status.authenticated,
+                default_account_id: default_account_id.clone(),
+                migration_error: status.migration_error,
+                accounts: status
+                    .accounts
+                    .into_iter()
+                    .map(|account| {
+                        map_account(auth_provider, account, default_account_id.as_deref())
+                    })
+                    .collect(),
+            })
+        }
+        AUTH_PROVIDER_CODEX_OAUTH => {
+            let auth_manager = ctx.codex_oauth_manager.read().await;
+            let status = auth_manager.get_status().await;
+            let default_account_id = status.default_account_id.clone();
+            Ok(ManagedAuthStatus {
+                provider: auth_provider.to_string(),
+                authenticated: status.authenticated,
+                default_account_id: default_account_id.clone(),
+                migration_error: None,
+                accounts: status
+                    .accounts
+                    .into_iter()
+                    .map(|account| {
+                        map_account(auth_provider, account, default_account_id.as_deref())
+                    })
+                    .collect(),
+            })
+        }
+        _ => unreachable!(),
+    }
+}
+
+pub async fn auth_remove_account(
+    ctx: &CoreContext,
+    auth_provider: &str,
+    account_id: &str,
+) -> Result<(), String> {
+    let auth_provider = ensure_auth_provider(auth_provider)?;
+    match auth_provider {
+        AUTH_PROVIDER_GITHUB_COPILOT => {
+            let auth_manager = ctx.copilot_auth_manager.write().await;
+            auth_manager
+                .remove_account(account_id)
+                .await
+                .map_err(|e| e.to_string())
+        }
+        AUTH_PROVIDER_CODEX_OAUTH => {
+            let auth_manager = ctx.codex_oauth_manager.write().await;
+            auth_manager
+                .remove_account(account_id)
+                .await
+                .map_err(|e| e.to_string())
+        }
+        _ => unreachable!(),
+    }
+}
+
+pub async fn auth_set_default_account(
+    ctx: &CoreContext,
+    auth_provider: &str,
+    account_id: &str,
+) -> Result<(), String> {
+    let auth_provider = ensure_auth_provider(auth_provider)?;
+    match auth_provider {
+        AUTH_PROVIDER_GITHUB_COPILOT => {
+            let auth_manager = ctx.copilot_auth_manager.write().await;
+            auth_manager
+                .set_default_account(account_id)
+                .await
+                .map_err(|e| e.to_string())
+        }
+        AUTH_PROVIDER_CODEX_OAUTH => {
+            let auth_manager = ctx.codex_oauth_manager.write().await;
+            auth_manager
+                .set_default_account(account_id)
+                .await
+                .map_err(|e| e.to_string())
+        }
+        _ => unreachable!(),
+    }
+}
+
+pub async fn auth_logout(ctx: &CoreContext, auth_provider: &str) -> Result<(), String> {
+    let auth_provider = ensure_auth_provider(auth_provider)?;
+    match auth_provider {
+        AUTH_PROVIDER_GITHUB_COPILOT => {
+            let auth_manager = ctx.copilot_auth_manager.write().await;
+            auth_manager.clear_auth().await.map_err(|e| e.to_string())
+        }
+        AUTH_PROVIDER_CODEX_OAUTH => {
+            let auth_manager = ctx.codex_oauth_manager.write().await;
+            auth_manager.clear_auth().await.map_err(|e| e.to_string())
+        }
+        _ => unreachable!(),
+    }
+}
+
+pub async fn copilot_start_device_flow(
+    ctx: &CoreContext,
+    github_domain: Option<&str>,
+) -> Result<GitHubDeviceCodeResponse, String> {
+    let auth_manager = ctx.copilot_auth_manager.read().await;
+    auth_manager
+        .start_device_flow(github_domain)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+pub async fn copilot_poll_for_auth(
+    ctx: &CoreContext,
+    device_code: &str,
+    github_domain: Option<&str>,
+) -> Result<bool, String> {
+    let auth_manager = ctx.copilot_auth_manager.write().await;
+    match auth_manager
+        .poll_for_token(device_code, github_domain)
+        .await
+    {
+        Ok(Some(_)) => Ok(true),
+        Ok(None) => Ok(false),
+        Err(cc_switch::CopilotAuthError::AuthorizationPending) => Ok(false),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+pub async fn copilot_poll_for_account(
+    ctx: &CoreContext,
+    device_code: &str,
+    github_domain: Option<&str>,
+) -> Result<Option<GitHubAccount>, String> {
+    let auth_manager = ctx.copilot_auth_manager.write().await;
+    match auth_manager
+        .poll_for_token(device_code, github_domain)
+        .await
+    {
+        Ok(account) => Ok(account),
+        Err(cc_switch::CopilotAuthError::AuthorizationPending) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+pub async fn copilot_list_accounts(ctx: &CoreContext) -> Result<Vec<GitHubAccount>, String> {
+    let auth_manager = ctx.copilot_auth_manager.read().await;
+    Ok(auth_manager.list_accounts().await)
+}
+
+pub async fn copilot_remove_account(ctx: &CoreContext, account_id: &str) -> Result<(), String> {
+    let auth_manager = ctx.copilot_auth_manager.write().await;
+    auth_manager
+        .remove_account(account_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+pub async fn copilot_set_default_account(
+    ctx: &CoreContext,
+    account_id: &str,
+) -> Result<(), String> {
+    let auth_manager = ctx.copilot_auth_manager.write().await;
+    auth_manager
+        .set_default_account(account_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+pub async fn copilot_get_auth_status(ctx: &CoreContext) -> Result<CopilotAuthStatus, String> {
+    let auth_manager = ctx.copilot_auth_manager.read().await;
+    Ok(auth_manager.get_status().await)
+}
+
+pub async fn copilot_is_authenticated(ctx: &CoreContext) -> Result<bool, String> {
+    let auth_manager = ctx.copilot_auth_manager.read().await;
+    Ok(auth_manager.is_authenticated().await)
+}
+
+pub async fn copilot_logout(ctx: &CoreContext) -> Result<(), String> {
+    let auth_manager = ctx.copilot_auth_manager.write().await;
+    auth_manager.clear_auth().await.map_err(|e| e.to_string())
+}
+
+pub async fn copilot_get_token(ctx: &CoreContext) -> Result<String, String> {
+    let auth_manager = ctx.copilot_auth_manager.read().await;
+    auth_manager
+        .get_valid_token()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+pub async fn copilot_get_token_for_account(
+    ctx: &CoreContext,
+    account_id: &str,
+) -> Result<String, String> {
+    let auth_manager = ctx.copilot_auth_manager.read().await;
+    auth_manager
+        .get_valid_token_for_account(account_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+pub async fn copilot_get_models(ctx: &CoreContext) -> Result<Vec<CopilotModel>, String> {
+    let auth_manager = ctx.copilot_auth_manager.read().await;
+    auth_manager.fetch_models().await.map_err(|e| e.to_string())
+}
+
+pub async fn copilot_get_models_for_account(
+    ctx: &CoreContext,
+    account_id: &str,
+) -> Result<Vec<CopilotModel>, String> {
+    let auth_manager = ctx.copilot_auth_manager.read().await;
+    auth_manager
+        .fetch_models_for_account(account_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+pub async fn copilot_get_usage(ctx: &CoreContext) -> Result<CopilotUsageResponse, String> {
+    let auth_manager = ctx.copilot_auth_manager.read().await;
+    auth_manager.fetch_usage().await.map_err(|e| e.to_string())
+}
+
+pub async fn copilot_get_usage_for_account(
+    ctx: &CoreContext,
+    account_id: &str,
+) -> Result<CopilotUsageResponse, String> {
+    let auth_manager = ctx.copilot_auth_manager.read().await;
+    auth_manager
+        .fetch_usage_for_account(account_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+fn claude_provider_models_are_claude_safe(provider: &Provider) -> bool {
+    let Some(env) = provider
+        .settings_config
+        .get("env")
+        .and_then(|value| value.as_object())
+    else {
+        return true;
+    };
+
+    [
+        "ANTHROPIC_MODEL",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL",
+        "ANTHROPIC_DEFAULT_OPUS_MODEL",
+    ]
+    .into_iter()
+    .filter_map(|key| env.get(key).and_then(|value| value.as_str()))
+    .map(str::trim)
+    .filter(|value| !value.is_empty())
+    .all(cc_switch::is_claude_safe_model_id)
+}
+
+fn suggested_claude_desktop_routes(
+    provider: &Provider,
+) -> Option<std::collections::HashMap<String, cc_switch::ClaudeDesktopModelRoute>> {
+    let env = provider
+        .settings_config
+        .get("env")
+        .and_then(|value| value.as_object())?;
+    let mut routes = std::collections::HashMap::new();
+
+    fn add_route(
+        routes: &mut std::collections::HashMap<String, cc_switch::ClaudeDesktopModelRoute>,
+        env: &serde_json::Map<String, serde_json::Value>,
+        route_id: &str,
+        env_key: &str,
+        display_name: &str,
+    ) {
+        if let Some(model) = env
+            .get(env_key)
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            routes.insert(
+                route_id.to_string(),
+                cc_switch::ClaudeDesktopModelRoute {
+                    model: model.to_string(),
+                    display_name: Some(display_name.to_string()),
+                    supports_1m: Some(true),
+                },
+            );
+        }
+    }
+
+    for spec in cc_switch::DEFAULT_PROXY_ROUTES {
+        add_route(
+            &mut routes,
+            env,
+            spec.route_id,
+            spec.env_key,
+            spec.display_name,
+        );
+    }
+
+    let primary_route = cc_switch::DEFAULT_PROXY_ROUTES[0];
+    if !routes.contains_key(primary_route.route_id) {
+        add_route(
+            &mut routes,
+            env,
+            primary_route.route_id,
+            "ANTHROPIC_MODEL",
+            primary_route.display_name,
+        );
+    }
+
+    (!routes.is_empty()).then_some(routes)
+}
+
 /// 获取自定义端点列表
 pub fn get_custom_endpoints(
     ctx: &CoreContext,
@@ -257,9 +1016,10 @@ pub async fn stream_check_provider(
         .get(provider_id)
         .ok_or_else(|| format!("供应商 {provider_id} 不存在"))?;
 
-    let result = StreamCheckService::check_with_retry(&app_type, provider, &config, None, None, None)
-        .await
-        .map_err(|e| e.to_string())?;
+    let result =
+        StreamCheckService::check_with_retry(&app_type, provider, &config, None, None, None)
+            .await
+            .map_err(|e| e.to_string())?;
 
     let _ = ctx.app_state().db.save_stream_check_log(
         provider_id,
@@ -313,18 +1073,18 @@ pub async fn stream_check_all_providers(
 
         let result =
             StreamCheckService::check_with_retry(&app_type, &provider, &config, None, None, None)
-            .await
-            .unwrap_or_else(|e| StreamCheckResult {
-                status: HealthStatus::Failed,
-                success: false,
-                message: e.to_string(),
-                response_time_ms: None,
-                http_status: None,
-                model_used: String::new(),
-                tested_at: Utc::now().timestamp(),
-                retry_count: 0,
-                error_category: None,
-            });
+                .await
+                .unwrap_or_else(|e| StreamCheckResult {
+                    status: HealthStatus::Failed,
+                    success: false,
+                    message: e.to_string(),
+                    response_time_ms: None,
+                    http_status: None,
+                    model_used: String::new(),
+                    tested_at: Utc::now().timestamp(),
+                    retry_count: 0,
+                    error_category: None,
+                });
 
         let _ = ctx.app_state().db.save_stream_check_log(
             &id,
@@ -411,6 +1171,15 @@ pub fn get_request_detail(
     ctx.app_state()
         .db
         .get_request_detail(request_id)
+        .map_err(|e| e.to_string())
+}
+
+pub fn sync_session_usage(ctx: &CoreContext) -> Result<SessionSyncResult, String> {
+    cc_switch::sync_all_session_usage(ctx.app_state().db.as_ref()).map_err(|e| e.to_string())
+}
+
+pub fn get_usage_data_sources(ctx: &CoreContext) -> Result<Vec<DataSourceSummary>, String> {
+    cc_switch::get_usage_data_sources_summary(ctx.app_state().db.as_ref())
         .map_err(|e| e.to_string())
 }
 
@@ -718,8 +1487,7 @@ pub fn export_config_to_file(
     file_path: &str,
 ) -> Result<serde_json::Value, String> {
     let target_path = std::path::PathBuf::from(file_path);
-    export_database_to_file(ctx.app_state().db.clone(), &target_path)
-        .map_err(|e| e.to_string())?;
+    export_database_to_file(ctx.app_state().db.clone(), &target_path).map_err(|e| e.to_string())?;
     Ok(serde_json::json!({
         "success": true,
         "message": "SQL exported successfully",
@@ -739,7 +1507,7 @@ pub fn import_config_from_file(
     file_path: &str,
 ) -> Result<serde_json::Value, String> {
     let path_buf = std::path::PathBuf::from(file_path);
-    import_database_with_sync(ctx.app_state().db.clone(), |db| db.import_sql(&path_buf))
+    import_database_with_post_sync(ctx.app_state().db.clone(), |db| db.import_sql(&path_buf))
         .map_err(|e| e.to_string())
 }
 
@@ -749,8 +1517,10 @@ pub fn import_config_from_sql_bytes(
 ) -> Result<serde_json::Value, String> {
     let sql_content =
         std::str::from_utf8(sql_bytes).map_err(|e| format!("SQL 文件编码无效: {e}"))?;
-    import_database_with_sync(ctx.app_state().db.clone(), |db| db.import_sql_string(sql_content))
-        .map_err(|e| e.to_string())
+    import_database_with_post_sync(ctx.app_state().db.clone(), |db| {
+        db.import_sql_string(sql_content)
+    })
+    .map_err(|e| e.to_string())
 }
 
 /// 同步当前供应商到 live 配置
@@ -1340,6 +2110,15 @@ pub fn get_installed_skills(ctx: &CoreContext) -> Result<serde_json::Value, Stri
     serde_json::to_value(skills).map_err(|e| e.to_string())
 }
 
+pub fn get_skill_backups() -> Result<Vec<SkillBackupEntry>, String> {
+    SkillService::list_backups().map_err(|e| e.to_string())
+}
+
+pub fn delete_skill_backup(backup_id: &str) -> Result<bool, String> {
+    SkillService::delete_backup(backup_id).map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
 /// 安装 Skill（新版统一安装）
 pub async fn install_skill_unified(
     ctx: &CoreContext,
@@ -1358,6 +2137,17 @@ pub async fn install_skill_unified(
 pub fn uninstall_skill_unified(ctx: &CoreContext, id: &str) -> Result<bool, String> {
     SkillService::uninstall(&ctx.app_state().db, id).map_err(|e| e.to_string())?;
     Ok(true)
+}
+
+pub fn restore_skill_backup(
+    ctx: &CoreContext,
+    backup_id: &str,
+    current_app: &str,
+) -> Result<serde_json::Value, String> {
+    let app_type = parse_skill_app_type(current_app)?;
+    let installed = SkillService::restore_from_backup(&ctx.app_state().db, backup_id, &app_type)
+        .map_err(|e| e.to_string())?;
+    serde_json::to_value(installed).map_err(|e| e.to_string())
 }
 
 /// 切换 Skill 的应用启用状态
@@ -1384,8 +2174,8 @@ pub fn import_skills_from_apps(
     ctx: &CoreContext,
     imports: Vec<ImportSkillSelection>,
 ) -> Result<serde_json::Value, String> {
-    let installed = SkillService::import_from_apps(&ctx.app_state().db, imports)
-        .map_err(|e| e.to_string())?;
+    let installed =
+        SkillService::import_from_apps(&ctx.app_state().db, imports).map_err(|e| e.to_string())?;
     serde_json::to_value(installed).map_err(|e| e.to_string())
 }
 
@@ -1401,6 +2191,38 @@ pub async fn discover_available_skills(ctx: &CoreContext) -> Result<serde_json::
         .await
         .map_err(|e| e.to_string())?;
     serde_json::to_value(skills).map_err(|e| e.to_string())
+}
+
+pub async fn check_skill_updates(ctx: &CoreContext) -> Result<Vec<SkillUpdateInfo>, String> {
+    get_skill_service(ctx)?
+        .check_updates(&ctx.app_state().db)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+pub async fn update_skill(ctx: &CoreContext, id: &str) -> Result<serde_json::Value, String> {
+    let installed = get_skill_service(ctx)?
+        .update_skill(&ctx.app_state().db, id)
+        .await
+        .map_err(|e| e.to_string())?;
+    serde_json::to_value(installed).map_err(|e| e.to_string())
+}
+
+pub async fn migrate_skill_storage(
+    ctx: &CoreContext,
+    target: SkillStorageLocation,
+) -> Result<SkillMigrationResult, String> {
+    SkillService::migrate_storage(&ctx.app_state().db, target).map_err(|e| e.to_string())
+}
+
+pub async fn search_skills_sh(
+    query: &str,
+    limit: usize,
+    offset: usize,
+) -> Result<SkillsShSearchResult, String> {
+    SkillService::search_skills_sh(query, limit, offset)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// 获取指定应用的技能列表
@@ -1565,6 +2387,12 @@ pub async fn delete_session(
         source_path.to_string(),
     )
     .await
+}
+
+pub fn delete_sessions(
+    items: Vec<DeleteSessionRequest>,
+) -> Result<Vec<DeleteSessionOutcome>, String> {
+    Ok(cc_switch::delete_sessions_batch(&items))
 }
 
 /// 获取 Claude 插件配置状态

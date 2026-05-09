@@ -60,6 +60,7 @@ pub use deeplink::{
     import_skill_from_deeplink, parse_and_merge_config, parse_deeplink_url, DeepLinkImportRequest,
 };
 pub use error::AppError;
+pub use hermes_config::{HermesMemoryLimits, HermesModelConfig, HermesWriteOutcome, MemoryKind};
 pub use import_export_support::*;
 pub use init_status::SkillsMigrationPayload;
 pub use mcp::{
@@ -69,21 +70,44 @@ pub use mcp::{
     sync_single_server_to_codex, sync_single_server_to_gemini,
 };
 pub use prompt::Prompt;
-pub use provider::{Provider, ProviderMeta, UniversalProvider};
+pub use provider::{
+    ClaudeDesktopMode, ClaudeDesktopModelRoute, Provider, ProviderMeta, UniversalProvider,
+    UsageData, UsageResult,
+};
 pub use proxy::http_client::{
     apply_proxy as apply_global_proxy, get_current_proxy_url as get_current_global_proxy_url,
     validate_proxy as validate_global_proxy,
 };
+pub use proxy::providers::codex_oauth_auth::{
+    CodexOAuthError, CodexOAuthManager, CodexOAuthStatus,
+};
+pub use proxy::providers::copilot_auth::{
+    CopilotAuthError, CopilotAuthManager, CopilotAuthStatus, CopilotModel, CopilotUsageResponse,
+    GitHubAccount, GitHubDeviceCodeResponse,
+};
 pub use proxy::types::{LogConfig, OptimizerConfig, RectifierConfig};
+pub use services::balance::get_balance as fetch_balance;
+pub use services::coding_plan::get_coding_plan_quota as fetch_coding_plan_quota;
 pub use services::env_checker::{check_env_conflicts, EnvConflict};
 pub use services::env_manager::{delete_env_vars, restore_from_backup, BackupInfo};
+pub use services::model_fetch::{fetch_models, FetchedModel};
 pub use services::omo::{OmoLocalFileData, OmoService, SLIM as OMO_SLIM, STANDARD as OMO_STANDARD};
 pub use services::provider::{
-    import_openclaw_providers_from_live, import_opencode_providers_from_live,
+    import_hermes_providers_from_live, import_openclaw_providers_from_live,
+    import_opencode_providers_from_live,
 };
+pub use services::session_usage::{DataSourceSummary, SessionSyncResult};
 pub use services::skill::{DiscoverableSkill, Skill, SkillRepo};
+pub use services::skill::{
+    MigrationResult as SkillMigrationResult, SkillBackupEntry, SkillStorageLocation,
+    SkillUpdateInfo, SkillsShSearchResult,
+};
 pub use services::stream_check::{
     HealthStatus, StreamCheckConfig, StreamCheckResult, StreamCheckService,
+};
+pub use services::subscription::{
+    get_subscription_quota as fetch_subscription_quota, query_codex_quota, CredentialStatus,
+    SubscriptionQuota,
 };
 pub use services::usage_stats::{
     DailyStats, LogFilters, ModelStats, PaginatedLogs, ProviderLimitStatus, ProviderStats,
@@ -99,7 +123,9 @@ pub use services::{
     ConfigService, EndpointLatency, McpService, PromptService, ProviderService, ProxyService,
     SkillService, SpeedtestService,
 };
-pub use session_manager::{SessionMessage, SessionMeta};
+pub use session_manager::{
+    DeleteSessionOutcome, DeleteSessionRequest, SessionMessage, SessionMeta,
+};
 pub use settings::{
     get_settings, get_webdav_sync_settings, reload_settings, set_webdav_sync_settings,
     update_settings, update_webdav_sync_status, AppSettings, WebDavSyncSettings,
@@ -180,6 +206,44 @@ pub async fn set_pricing_model_source_test_hook(
     state.db.set_pricing_model_source(app_type, value).await
 }
 
+pub fn delete_sessions_batch(requests: &[DeleteSessionRequest]) -> Vec<DeleteSessionOutcome> {
+    session_manager::delete_sessions(requests)
+}
+
+pub fn launch_terminal_command(command_line: &str, label: &str) -> Result<(), String> {
+    crate::commands::launch_terminal_running(command_line, label)
+}
+
+pub fn sync_all_session_usage(db: &Database) -> Result<SessionSyncResult, AppError> {
+    let mut result = services::session_usage::sync_claude_session_logs(db)?;
+
+    match services::session_usage_codex::sync_codex_usage(db) {
+        Ok(codex_result) => {
+            result.imported += codex_result.imported;
+            result.skipped += codex_result.skipped;
+            result.files_scanned += codex_result.files_scanned;
+            result.errors.extend(codex_result.errors);
+        }
+        Err(e) => result.errors.push(format!("Codex 同步失败: {e}")),
+    }
+
+    match services::session_usage_gemini::sync_gemini_usage(db) {
+        Ok(gemini_result) => {
+            result.imported += gemini_result.imported;
+            result.skipped += gemini_result.skipped;
+            result.files_scanned += gemini_result.files_scanned;
+            result.errors.extend(gemini_result.errors);
+        }
+        Err(e) => result.errors.push(format!("Gemini 同步失败: {e}")),
+    }
+
+    Ok(result)
+}
+
+pub fn get_usage_data_sources_summary(db: &Database) -> Result<Vec<DataSourceSummary>, AppError> {
+    services::session_usage::get_data_source_breakdown(db)
+}
+
 pub const WEB_COMPAT_TAURI_COMMANDS: &[&str] = &[
     "get_providers",
     "get_current_provider",
@@ -202,6 +266,32 @@ pub const WEB_COMPAT_TAURI_COMMANDS: &[&str] = &[
     "get_common_config_snippet",
     "set_common_config_snippet",
     "read_live_provider_settings",
+    "fetch_models_for_config",
+    "import_claude_desktop_providers_from_claude",
+    "get_claude_desktop_status",
+    "get_claude_desktop_default_routes",
+    "auth_start_login",
+    "auth_poll_for_account",
+    "auth_list_accounts",
+    "auth_get_status",
+    "auth_remove_account",
+    "auth_set_default_account",
+    "auth_logout",
+    "copilot_start_device_flow",
+    "copilot_poll_for_auth",
+    "copilot_poll_for_account",
+    "copilot_list_accounts",
+    "copilot_remove_account",
+    "copilot_set_default_account",
+    "copilot_get_auth_status",
+    "copilot_logout",
+    "copilot_is_authenticated",
+    "copilot_get_token",
+    "copilot_get_token_for_account",
+    "copilot_get_models",
+    "copilot_get_models_for_account",
+    "copilot_get_usage",
+    "copilot_get_usage_for_account",
     "get_settings",
     "save_settings",
     "get_rectifier_config",
@@ -228,6 +318,10 @@ pub const WEB_COMPAT_TAURI_COMMANDS: &[&str] = &[
     "validate_mcp_command",
     "queryProviderUsage",
     "testUsageScript",
+    "get_subscription_quota",
+    "get_codex_oauth_quota",
+    "get_coding_plan_quota",
+    "get_balance",
     "get_mcp_config",
     "upsert_mcp_server_in_config",
     "delete_mcp_server_in_config",
@@ -276,7 +370,10 @@ pub const WEB_COMPAT_TAURI_COMMANDS: &[&str] = &[
     "restore_env_backup",
     "get_skills",
     "get_installed_skills",
+    "get_skill_backups",
+    "delete_skill_backup",
     "discover_available_skills",
+    "check_skill_updates",
     "get_skills_for_app",
     "install_skill",
     "install_skill_for_app",
@@ -287,6 +384,10 @@ pub const WEB_COMPAT_TAURI_COMMANDS: &[&str] = &[
     "toggle_skill_app",
     "scan_unmanaged_skills",
     "import_skills_from_apps",
+    "restore_skill_backup",
+    "update_skill",
+    "migrate_skill_storage",
+    "search_skills_sh",
     "get_skill_repos",
     "add_skill_repo",
     "remove_skill_repo",
@@ -302,6 +403,7 @@ pub const WEB_COMPAT_TAURI_COMMANDS: &[&str] = &[
     "get_session_messages",
     "launch_session_terminal",
     "delete_session",
+    "delete_sessions",
     "extract_common_config_snippet",
     "get_skills_migration_result",
     "get_tool_versions",
@@ -310,6 +412,15 @@ pub const WEB_COMPAT_TAURI_COMMANDS: &[&str] = &[
     "import_openclaw_providers_from_live",
     "get_openclaw_live_provider_ids",
     "get_openclaw_live_provider",
+    "import_hermes_providers_from_live",
+    "get_hermes_live_provider_ids",
+    "get_hermes_model_config",
+    "get_hermes_memory",
+    "set_hermes_memory",
+    "get_hermes_memory_limits",
+    "set_hermes_memory_enabled",
+    "open_hermes_web_ui",
+    "launch_hermes_dashboard",
     "scan_openclaw_config_health",
     "get_openclaw_default_model",
     "set_openclaw_default_model",
@@ -345,6 +456,7 @@ pub const WEB_COMPAT_TAURI_COMMANDS: &[&str] = &[
     "search_daily_memory_files",
     "open_workspace_directory",
     "start_proxy_server",
+    "stop_proxy_server",
     "stop_proxy_with_restore",
     "get_proxy_takeover_status",
     "set_proxy_takeover_for_app",
@@ -379,6 +491,8 @@ pub const WEB_COMPAT_TAURI_COMMANDS: &[&str] = &[
     "get_model_stats",
     "get_request_logs",
     "get_request_detail",
+    "sync_session_usage",
+    "get_usage_data_sources",
     "get_model_pricing",
     "update_model_pricing",
     "delete_model_pricing",
@@ -404,6 +518,12 @@ pub use claude_mcp::{
 };
 
 // Re-export gemini_config functions for web server use
+pub use claude_desktop_config::{
+    default_proxy_routes as get_claude_desktop_default_routes_raw,
+    get_status as get_claude_desktop_status_raw, is_claude_safe_model_id,
+    is_compatible_direct_provider, ClaudeDesktopDefaultRoute, ClaudeDesktopStatus,
+    DEFAULT_PROXY_ROUTES,
+};
 pub use gemini_config::{get_gemini_dir, get_gemini_env_path};
 pub use openclaw_config::{
     get_openclaw_config_path, get_openclaw_dir, OpenClawAgentsDefaults, OpenClawDefaultModel,

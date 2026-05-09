@@ -23,6 +23,36 @@ rpc_business_methods!(
     "queryProviderUsage",
     "testUsageScript",
     "read_live_provider_settings",
+    "fetch_models_for_config",
+    "import_claude_desktop_providers_from_claude",
+    "get_claude_desktop_status",
+    "get_claude_desktop_default_routes",
+    "auth_start_login",
+    "auth_poll_for_account",
+    "auth_list_accounts",
+    "auth_get_status",
+    "auth_remove_account",
+    "auth_set_default_account",
+    "auth_logout",
+    "copilot_start_device_flow",
+    "copilot_poll_for_auth",
+    "copilot_poll_for_account",
+    "copilot_list_accounts",
+    "copilot_remove_account",
+    "copilot_set_default_account",
+    "copilot_get_auth_status",
+    "copilot_logout",
+    "copilot_is_authenticated",
+    "copilot_get_token",
+    "copilot_get_token_for_account",
+    "copilot_get_models",
+    "copilot_get_models_for_account",
+    "copilot_get_usage",
+    "copilot_get_usage_for_account",
+    "get_subscription_quota",
+    "get_codex_oauth_quota",
+    "get_coding_plan_quota",
+    "get_balance",
     "test_api_endpoints",
     "get_custom_endpoints",
     "add_custom_endpoint",
@@ -38,11 +68,14 @@ rpc_business_methods!(
     "get_model_stats",
     "get_request_logs",
     "get_request_detail",
+    "sync_session_usage",
+    "get_usage_data_sources",
     "get_model_pricing",
     "update_model_pricing",
     "delete_model_pricing",
     "check_provider_limits",
     "start_proxy_server",
+    "stop_proxy_server",
     "stop_proxy_with_restore",
     "get_proxy_takeover_status",
     "set_proxy_takeover_for_app",
@@ -119,7 +152,10 @@ rpc_business_methods!(
     "webdav_sync_fetch_remote_info",
     "get_skills",
     "get_installed_skills",
+    "get_skill_backups",
+    "delete_skill_backup",
     "discover_available_skills",
+    "check_skill_updates",
     "get_skills_for_app",
     "install_skill",
     "install_skill_for_app",
@@ -130,6 +166,10 @@ rpc_business_methods!(
     "toggle_skill_app",
     "scan_unmanaged_skills",
     "import_skills_from_apps",
+    "restore_skill_backup",
+    "update_skill",
+    "migrate_skill_storage",
+    "search_skills_sh",
     "get_skill_repos",
     "add_skill_repo",
     "remove_skill_repo",
@@ -143,6 +183,7 @@ rpc_business_methods!(
     "get_session_messages",
     "launch_session_terminal",
     "delete_session",
+    "delete_sessions",
     "extract_common_config_snippet",
     "get_skills_migration_result",
     "get_tool_versions",
@@ -151,6 +192,15 @@ rpc_business_methods!(
     "import_openclaw_providers_from_live",
     "get_openclaw_live_provider_ids",
     "get_openclaw_live_provider",
+    "import_hermes_providers_from_live",
+    "get_hermes_live_provider_ids",
+    "get_hermes_model_config",
+    "get_hermes_memory",
+    "set_hermes_memory",
+    "get_hermes_memory_limits",
+    "set_hermes_memory_enabled",
+    "open_hermes_web_ui",
+    "launch_hermes_dashboard",
     "scan_openclaw_config_health",
     "get_openclaw_default_model",
     "set_openclaw_default_model",
@@ -481,6 +531,279 @@ pub async fn dispatch_command(
             Ok(settings)
         }
 
+        "fetch_models_for_config" => {
+            let base_url = get_str_param(params, &["baseUrl", "base_url"])?;
+            let api_key = get_str_param(params, &["apiKey", "api_key"])?;
+            let is_full_url = params
+                .get("isFullUrl")
+                .or_else(|| params.get("is_full_url"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let models_url = params
+                .get("modelsUrl")
+                .or_else(|| params.get("models_url"))
+                .and_then(|v| v.as_str());
+
+            let models =
+                cc_switch_core::fetch_models_for_config(base_url, api_key, is_full_url, models_url)
+                    .await
+                    .map_err(RpcError::app_error)?;
+
+            serde_json::to_value(models).map_err(|e| RpcError::internal_error(e.to_string()))
+        }
+
+        "import_claude_desktop_providers_from_claude" => {
+            let count = cc_switch_core::import_claude_desktop_providers_from_claude(core)
+                .map_err(RpcError::app_error)?;
+            Ok(serde_json::json!(count))
+        }
+
+        "get_claude_desktop_status" => {
+            let status = cc_switch_core::get_claude_desktop_status(core)
+                .await
+                .map_err(RpcError::app_error)?;
+            serde_json::to_value(status).map_err(|e| RpcError::internal_error(e.to_string()))
+        }
+
+        "get_claude_desktop_default_routes" => {
+            let routes = cc_switch_core::get_claude_desktop_default_routes();
+            serde_json::to_value(routes).map_err(|e| RpcError::internal_error(e.to_string()))
+        }
+
+        "auth_start_login" => {
+            let auth_provider = get_str_param(params, &["authProvider", "auth_provider"])?;
+            let github_domain = params
+                .get("githubDomain")
+                .or_else(|| params.get("github_domain"))
+                .and_then(|v| v.as_str());
+            let response = cc_switch_core::auth_start_login(core, auth_provider, github_domain)
+                .await
+                .map_err(RpcError::app_error)?;
+            serde_json::to_value(response).map_err(|e| RpcError::internal_error(e.to_string()))
+        }
+
+        "auth_poll_for_account" => {
+            let auth_provider = get_str_param(params, &["authProvider", "auth_provider"])?;
+            let device_code = get_str_param(params, &["deviceCode", "device_code"])?;
+            let github_domain = params
+                .get("githubDomain")
+                .or_else(|| params.get("github_domain"))
+                .and_then(|v| v.as_str());
+            let account = cc_switch_core::auth_poll_for_account(
+                core,
+                auth_provider,
+                device_code,
+                github_domain,
+            )
+            .await
+            .map_err(RpcError::app_error)?;
+            serde_json::to_value(account).map_err(|e| RpcError::internal_error(e.to_string()))
+        }
+
+        "auth_list_accounts" => {
+            let auth_provider = get_str_param(params, &["authProvider", "auth_provider"])?;
+            let accounts = cc_switch_core::auth_list_accounts(core, auth_provider)
+                .await
+                .map_err(RpcError::app_error)?;
+            serde_json::to_value(accounts).map_err(|e| RpcError::internal_error(e.to_string()))
+        }
+
+        "auth_get_status" => {
+            let auth_provider = get_str_param(params, &["authProvider", "auth_provider"])?;
+            let status = cc_switch_core::auth_get_status(core, auth_provider)
+                .await
+                .map_err(RpcError::app_error)?;
+            serde_json::to_value(status).map_err(|e| RpcError::internal_error(e.to_string()))
+        }
+
+        "auth_remove_account" => {
+            let auth_provider = get_str_param(params, &["authProvider", "auth_provider"])?;
+            let account_id = get_str_param(params, &["accountId", "account_id"])?;
+            cc_switch_core::auth_remove_account(core, auth_provider, account_id)
+                .await
+                .map_err(RpcError::app_error)?;
+            Ok(Value::Null)
+        }
+
+        "auth_set_default_account" => {
+            let auth_provider = get_str_param(params, &["authProvider", "auth_provider"])?;
+            let account_id = get_str_param(params, &["accountId", "account_id"])?;
+            cc_switch_core::auth_set_default_account(core, auth_provider, account_id)
+                .await
+                .map_err(RpcError::app_error)?;
+            Ok(Value::Null)
+        }
+
+        "auth_logout" => {
+            let auth_provider = get_str_param(params, &["authProvider", "auth_provider"])?;
+            cc_switch_core::auth_logout(core, auth_provider)
+                .await
+                .map_err(RpcError::app_error)?;
+            Ok(Value::Null)
+        }
+
+        "copilot_start_device_flow" => {
+            let github_domain = params
+                .get("githubDomain")
+                .or_else(|| params.get("github_domain"))
+                .and_then(|v| v.as_str());
+            let response = cc_switch_core::copilot_start_device_flow(core, github_domain)
+                .await
+                .map_err(RpcError::app_error)?;
+            serde_json::to_value(response).map_err(|e| RpcError::internal_error(e.to_string()))
+        }
+
+        "copilot_poll_for_auth" => {
+            let device_code = get_str_param(params, &["deviceCode", "device_code"])?;
+            let github_domain = params
+                .get("githubDomain")
+                .or_else(|| params.get("github_domain"))
+                .and_then(|v| v.as_str());
+            let ok = cc_switch_core::copilot_poll_for_auth(core, device_code, github_domain)
+                .await
+                .map_err(RpcError::app_error)?;
+            Ok(serde_json::json!(ok))
+        }
+
+        "copilot_poll_for_account" => {
+            let device_code = get_str_param(params, &["deviceCode", "device_code"])?;
+            let github_domain = params
+                .get("githubDomain")
+                .or_else(|| params.get("github_domain"))
+                .and_then(|v| v.as_str());
+            let account =
+                cc_switch_core::copilot_poll_for_account(core, device_code, github_domain)
+                    .await
+                    .map_err(RpcError::app_error)?;
+            serde_json::to_value(account).map_err(|e| RpcError::internal_error(e.to_string()))
+        }
+
+        "copilot_list_accounts" => {
+            let accounts = cc_switch_core::copilot_list_accounts(core)
+                .await
+                .map_err(RpcError::app_error)?;
+            serde_json::to_value(accounts).map_err(|e| RpcError::internal_error(e.to_string()))
+        }
+
+        "copilot_remove_account" => {
+            let account_id = get_str_param(params, &["accountId", "account_id"])?;
+            cc_switch_core::copilot_remove_account(core, account_id)
+                .await
+                .map_err(RpcError::app_error)?;
+            Ok(Value::Null)
+        }
+
+        "copilot_set_default_account" => {
+            let account_id = get_str_param(params, &["accountId", "account_id"])?;
+            cc_switch_core::copilot_set_default_account(core, account_id)
+                .await
+                .map_err(RpcError::app_error)?;
+            Ok(Value::Null)
+        }
+
+        "copilot_get_auth_status" => {
+            let status = cc_switch_core::copilot_get_auth_status(core)
+                .await
+                .map_err(RpcError::app_error)?;
+            serde_json::to_value(status).map_err(|e| RpcError::internal_error(e.to_string()))
+        }
+
+        "copilot_logout" => {
+            cc_switch_core::copilot_logout(core)
+                .await
+                .map_err(RpcError::app_error)?;
+            Ok(Value::Null)
+        }
+
+        "copilot_is_authenticated" => {
+            let ok = cc_switch_core::copilot_is_authenticated(core)
+                .await
+                .map_err(RpcError::app_error)?;
+            Ok(serde_json::json!(ok))
+        }
+
+        "copilot_get_token" => {
+            let token = cc_switch_core::copilot_get_token(core)
+                .await
+                .map_err(RpcError::app_error)?;
+            Ok(serde_json::json!(token))
+        }
+
+        "copilot_get_token_for_account" => {
+            let account_id = get_str_param(params, &["accountId", "account_id"])?;
+            let token = cc_switch_core::copilot_get_token_for_account(core, account_id)
+                .await
+                .map_err(RpcError::app_error)?;
+            Ok(serde_json::json!(token))
+        }
+
+        "copilot_get_models" => {
+            let models = cc_switch_core::copilot_get_models(core)
+                .await
+                .map_err(RpcError::app_error)?;
+            serde_json::to_value(models).map_err(|e| RpcError::internal_error(e.to_string()))
+        }
+
+        "copilot_get_models_for_account" => {
+            let account_id = get_str_param(params, &["accountId", "account_id"])?;
+            let models = cc_switch_core::copilot_get_models_for_account(core, account_id)
+                .await
+                .map_err(RpcError::app_error)?;
+            serde_json::to_value(models).map_err(|e| RpcError::internal_error(e.to_string()))
+        }
+
+        "copilot_get_usage" => {
+            let usage = cc_switch_core::copilot_get_usage(core)
+                .await
+                .map_err(RpcError::app_error)?;
+            serde_json::to_value(usage).map_err(|e| RpcError::internal_error(e.to_string()))
+        }
+
+        "copilot_get_usage_for_account" => {
+            let account_id = get_str_param(params, &["accountId", "account_id"])?;
+            let usage = cc_switch_core::copilot_get_usage_for_account(core, account_id)
+                .await
+                .map_err(RpcError::app_error)?;
+            serde_json::to_value(usage).map_err(|e| RpcError::internal_error(e.to_string()))
+        }
+
+        "get_subscription_quota" => {
+            let tool = get_str_param(params, &["tool"])?;
+            let quota = cc_switch_core::get_subscription_quota(tool)
+                .await
+                .map_err(RpcError::app_error)?;
+            serde_json::to_value(quota).map_err(|e| RpcError::internal_error(e.to_string()))
+        }
+
+        "get_codex_oauth_quota" => {
+            let account_id = params
+                .get("accountId")
+                .or_else(|| params.get("account_id"))
+                .and_then(|v| v.as_str());
+            let quota = cc_switch_core::get_codex_oauth_quota(account_id)
+                .await
+                .map_err(RpcError::app_error)?;
+            serde_json::to_value(quota).map_err(|e| RpcError::internal_error(e.to_string()))
+        }
+
+        "get_coding_plan_quota" => {
+            let base_url = get_str_param(params, &["baseUrl", "base_url"])?;
+            let api_key = get_str_param(params, &["apiKey", "api_key"])?;
+            let quota = cc_switch_core::get_coding_plan_quota(base_url, api_key)
+                .await
+                .map_err(RpcError::app_error)?;
+            serde_json::to_value(quota).map_err(|e| RpcError::internal_error(e.to_string()))
+        }
+
+        "get_balance" => {
+            let base_url = get_str_param(params, &["baseUrl", "base_url"])?;
+            let api_key = get_str_param(params, &["apiKey", "api_key"])?;
+            let result = cc_switch_core::get_balance(base_url, api_key)
+                .await
+                .map_err(RpcError::app_error)?;
+            serde_json::to_value(result).map_err(|e| RpcError::internal_error(e.to_string()))
+        }
+
         "test_api_endpoints" => {
             let urls_value = params
                 .get("urls")
@@ -687,6 +1010,17 @@ pub async fn dispatch_command(
             serde_json::to_value(detail).map_err(|e| RpcError::internal_error(e.to_string()))
         }
 
+        "sync_session_usage" => {
+            let result = cc_switch_core::sync_session_usage(core).map_err(RpcError::app_error)?;
+            serde_json::to_value(result).map_err(|e| RpcError::internal_error(e.to_string()))
+        }
+
+        "get_usage_data_sources" => {
+            let result =
+                cc_switch_core::get_usage_data_sources(core).map_err(RpcError::app_error)?;
+            serde_json::to_value(result).map_err(|e| RpcError::internal_error(e.to_string()))
+        }
+
         "get_model_pricing" => {
             let pricing = cc_switch_core::get_model_pricing(core).map_err(RpcError::app_error)?;
 
@@ -745,6 +1079,34 @@ pub async fn dispatch_command(
                 .map_err(RpcError::app_error)?;
 
             serde_json::to_value(info).map_err(|e| RpcError::internal_error(e.to_string()))
+        }
+
+        "stop_proxy_server" => {
+            let takeover = core
+                .app_state()
+                .proxy_service
+                .get_takeover_status()
+                .await
+                .map_err(RpcError::app_error)?;
+            if takeover.claude
+                || takeover.codex
+                || takeover.gemini
+                || takeover.opencode
+                || takeover.openclaw
+            {
+                return Err(RpcError::app_error(
+                    "仍有应用处于代理接管状态，请先在设置中关闭对应应用接管后再停止本地路由。"
+                        .to_string(),
+                ));
+            }
+
+            core.app_state()
+                .proxy_service
+                .stop()
+                .await
+                .map_err(RpcError::app_error)?;
+
+            Ok(Value::Null)
         }
 
         "stop_proxy_with_restore" => {
@@ -1544,11 +1906,29 @@ pub async fn dispatch_command(
             Ok(skills)
         }
 
+        "get_skill_backups" => {
+            let backups = cc_switch_core::get_skill_backups().map_err(RpcError::app_error)?;
+            serde_json::to_value(backups).map_err(|e| RpcError::internal_error(e.to_string()))
+        }
+
+        "delete_skill_backup" => {
+            let backup_id = get_str_param(params, &["backupId", "backup_id"])?;
+            let ok = cc_switch_core::delete_skill_backup(backup_id).map_err(RpcError::app_error)?;
+            Ok(serde_json::json!(ok))
+        }
+
         "discover_available_skills" => {
             let skills = cc_switch_core::discover_available_skills(core)
                 .await
                 .map_err(RpcError::app_error)?;
             Ok(skills)
+        }
+
+        "check_skill_updates" => {
+            let updates = cc_switch_core::check_skill_updates(core)
+                .await
+                .map_err(RpcError::app_error)?;
+            serde_json::to_value(updates).map_err(|e| RpcError::internal_error(e.to_string()))
         }
 
         "get_skills_for_app" => {
@@ -1612,6 +1992,14 @@ pub async fn dispatch_command(
             Ok(serde_json::json!(ok))
         }
 
+        "restore_skill_backup" => {
+            let backup_id = get_str_param(params, &["backupId", "backup_id"])?;
+            let current_app = get_str_param(params, &["currentApp", "current_app"])?;
+            let installed = cc_switch_core::restore_skill_backup(core, backup_id, current_app)
+                .map_err(RpcError::app_error)?;
+            Ok(installed)
+        }
+
         "toggle_skill_app" => {
             let id = get_str_param(params, &["id"])?;
             let app = get_str_param(params, &["app"])?;
@@ -1633,12 +2021,9 @@ pub async fn dispatch_command(
                     RpcError::invalid_params(format!("invalid 'imports' value: {e}"))
                 })?
             } else {
-                let directories_value = params
-                    .get("directories")
-                    .cloned()
-                    .ok_or_else(|| {
-                        RpcError::invalid_params("missing 'imports' or legacy 'directories' field")
-                    })?;
+                let directories_value = params.get("directories").cloned().ok_or_else(|| {
+                    RpcError::invalid_params("missing 'imports' or legacy 'directories' field")
+                })?;
                 let directories: Vec<String> =
                     serde_json::from_value(directories_value).map_err(|e| {
                         RpcError::invalid_params(format!("invalid 'directories' value: {e}"))
@@ -1654,6 +2039,51 @@ pub async fn dispatch_command(
             let installed = cc_switch_core::import_skills_from_apps(core, imports)
                 .map_err(RpcError::app_error)?;
             Ok(installed)
+        }
+
+        "update_skill" => {
+            let id = get_str_param(params, &["id"])?;
+            let updated = cc_switch_core::update_skill(core, id)
+                .await
+                .map_err(RpcError::app_error)?;
+            Ok(updated)
+        }
+
+        "migrate_skill_storage" => {
+            let target_value = params
+                .get("target")
+                .cloned()
+                .ok_or_else(|| RpcError::invalid_params("missing 'target' field"))?;
+            let target: cc_switch_core::SkillStorageLocation = serde_json::from_value(target_value)
+                .map_err(|e| RpcError::invalid_params(format!("invalid 'target' value: {e}")))?;
+            let result = cc_switch_core::migrate_skill_storage(core, target)
+                .await
+                .map_err(RpcError::app_error)?;
+            serde_json::to_value(result).map_err(|e| RpcError::internal_error(e.to_string()))
+        }
+
+        "search_skills_sh" => {
+            let query = get_str_param(params, &["query"])?;
+            let limit = params
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| RpcError::invalid_params("missing 'limit' field"))
+                .and_then(|v| {
+                    usize::try_from(v)
+                        .map_err(|_| RpcError::invalid_params("invalid 'limit' field"))
+                })?;
+            let offset = params
+                .get("offset")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| RpcError::invalid_params("missing 'offset' field"))
+                .and_then(|v| {
+                    usize::try_from(v)
+                        .map_err(|_| RpcError::invalid_params("invalid 'offset' field"))
+                })?;
+            let result = cc_switch_core::search_skills_sh(query, limit, offset)
+                .await
+                .map_err(RpcError::app_error)?;
+            serde_json::to_value(result).map_err(|e| RpcError::internal_error(e.to_string()))
         }
 
         "get_skill_repos" => {
@@ -1735,6 +2165,18 @@ pub async fn dispatch_command(
             Ok(serde_json::json!(ok))
         }
 
+        "delete_sessions" => {
+            let items_value = params
+                .get("items")
+                .cloned()
+                .ok_or_else(|| RpcError::invalid_params("missing 'items' field"))?;
+            let items: Vec<cc_switch_core::DeleteSessionRequest> =
+                serde_json::from_value(items_value)
+                    .map_err(|e| RpcError::invalid_params(format!("invalid 'items' value: {e}")))?;
+            let result = cc_switch_core::delete_sessions(items).map_err(RpcError::app_error)?;
+            serde_json::to_value(result).map_err(|e| RpcError::internal_error(e.to_string()))
+        }
+
         "extract_common_config_snippet" => {
             let app_type = get_str_param(params, &["appType", "app_type"])?;
             let settings_config = params
@@ -1814,6 +2256,75 @@ pub async fn dispatch_command(
             let provider = cc_switch_core::get_openclaw_live_provider(provider_id)
                 .map_err(RpcError::app_error)?;
             Ok(serde_json::json!(provider))
+        }
+
+        "import_hermes_providers_from_live" => {
+            let count = cc_switch_core::import_hermes_providers_from_live(core)
+                .map_err(RpcError::app_error)?;
+            Ok(serde_json::json!(count))
+        }
+
+        "get_hermes_live_provider_ids" => {
+            let ids =
+                cc_switch_core::get_hermes_live_provider_ids().map_err(RpcError::app_error)?;
+            Ok(serde_json::json!(ids))
+        }
+
+        "get_hermes_model_config" => {
+            let config = cc_switch_core::get_hermes_model_config().map_err(RpcError::app_error)?;
+            serde_json::to_value(config).map_err(|e| RpcError::internal_error(e.to_string()))
+        }
+
+        "get_hermes_memory" => {
+            let kind_value = params
+                .get("kind")
+                .cloned()
+                .ok_or_else(|| RpcError::invalid_params("missing 'kind' field"))?;
+            let kind: cc_switch_core::MemoryKind = serde_json::from_value(kind_value)
+                .map_err(|e| RpcError::invalid_params(format!("invalid 'kind' value: {e}")))?;
+            let content = cc_switch_core::get_hermes_memory(kind).map_err(RpcError::app_error)?;
+            Ok(serde_json::json!(content))
+        }
+
+        "set_hermes_memory" => {
+            let kind_value = params
+                .get("kind")
+                .cloned()
+                .ok_or_else(|| RpcError::invalid_params("missing 'kind' field"))?;
+            let kind: cc_switch_core::MemoryKind = serde_json::from_value(kind_value)
+                .map_err(|e| RpcError::invalid_params(format!("invalid 'kind' value: {e}")))?;
+            let content = get_str_param(params, &["content"])?;
+            cc_switch_core::set_hermes_memory(kind, content).map_err(RpcError::app_error)?;
+            Ok(Value::Null)
+        }
+
+        "get_hermes_memory_limits" => {
+            let limits = cc_switch_core::get_hermes_memory_limits().map_err(RpcError::app_error)?;
+            serde_json::to_value(limits).map_err(|e| RpcError::internal_error(e.to_string()))
+        }
+
+        "set_hermes_memory_enabled" => {
+            let kind_value = params
+                .get("kind")
+                .cloned()
+                .ok_or_else(|| RpcError::invalid_params("missing 'kind' field"))?;
+            let kind: cc_switch_core::MemoryKind = serde_json::from_value(kind_value)
+                .map_err(|e| RpcError::invalid_params(format!("invalid 'kind' value: {e}")))?;
+            let enabled = get_bool_param(params, &["enabled"])?;
+            let outcome = cc_switch_core::set_hermes_memory_enabled(kind, enabled)
+                .map_err(RpcError::app_error)?;
+            serde_json::to_value(outcome).map_err(|e| RpcError::internal_error(e.to_string()))
+        }
+
+        "open_hermes_web_ui" => {
+            let path = params.get("path").and_then(|value| value.as_str());
+            let target = cc_switch_core::open_hermes_web_ui(path).map_err(RpcError::app_error)?;
+            Ok(serde_json::json!(target))
+        }
+
+        "launch_hermes_dashboard" => {
+            let ok = cc_switch_core::launch_hermes_dashboard().map_err(RpcError::app_error)?;
+            Ok(serde_json::json!(ok))
         }
 
         "scan_openclaw_config_health" => {

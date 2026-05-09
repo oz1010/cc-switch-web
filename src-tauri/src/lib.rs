@@ -47,7 +47,6 @@ pub use codex_config::{
 pub use commands::open_provider_terminal;
 pub use commands::ModelPricingInfo;
 #[allow(ambiguous_glob_reexports)]
-#[allow(ambiguous_glob_reexports)]
 pub use commands::*;
 pub use config::{
     get_app_config_dir, get_app_config_path, get_claude_config_dir,

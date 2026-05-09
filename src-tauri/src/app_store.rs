@@ -1,5 +1,6 @@
 #[cfg(feature = "desktop")]
 use serde_json::Value;
+#[cfg(not(feature = "desktop"))]
 use std::env;
 use std::path::PathBuf;
 use std::sync::{OnceLock, RwLock};

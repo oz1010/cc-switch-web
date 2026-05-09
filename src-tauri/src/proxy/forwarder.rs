@@ -769,6 +769,7 @@ impl RequestForwarder {
     }
 
     /// 转发单个请求（使用适配器）
+    #[allow(clippy::too_many_arguments)]
     async fn forward(
         &self,
         app_type: &AppType,

@@ -886,6 +886,7 @@ mod tests {
     use crate::proxy::{
         failover_switch::FailoverSwitchManager,
         provider_router::ProviderRouter,
+        providers::gemini_shadow::GeminiShadowStore,
         types::{ProxyConfig, ProxyStatus},
     };
     use std::{collections::HashMap, sync::Arc};
@@ -902,6 +903,7 @@ mod tests {
             start_time: Arc::new(RwLock::new(None)),
             current_providers: Arc::new(RwLock::new(HashMap::new())),
             provider_router: Arc::new(ProviderRouter::new(db.clone())),
+            gemini_shadow: Arc::new(GeminiShadowStore::default()),
             app_handle: None,
             failover_manager: Arc::new(FailoverSwitchManager::new(db)),
         }

@@ -28,7 +28,11 @@ export async function computeDefaultConfigDir(
           ? ".codex"
           : app === "gemini"
             ? ".gemini"
-            : ".config/opencode";
+            : app === "opencode"
+              ? ".config/opencode"
+              : app === "openclaw"
+                ? ".openclaw"
+                : ".hermes";
     return await join(home, folder);
   } catch (error) {
     console.error(

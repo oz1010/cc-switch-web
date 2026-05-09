@@ -15,7 +15,7 @@ export default defineConfig({
       "@platform/updater-impl": path.resolve(__dirname, "./src/lib/updater.web.ts"),
       "@platform/platform-paths-impl": path.resolve(
         __dirname,
-        "./src/lib/platform-paths.web.ts",
+        "./src/lib/platform-paths.tauri.ts",
       ),
     },
   },

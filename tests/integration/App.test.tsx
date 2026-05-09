@@ -4,6 +4,14 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { providersApi } from "@/lib/api/providers";
+
+vi.mock("@/lib/api/auth", () => ({
+  authApi: {
+    checkStatus: () => Promise.resolve({ enabled: false }),
+    checkSession: () => Promise.resolve({ valid: true }),
+    login: () => Promise.resolve({ success: false, error: "mock" }),
+  },
+}));
 import {
   resetProviderState,
   setCurrentProviderId,

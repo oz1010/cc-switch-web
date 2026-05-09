@@ -430,6 +430,7 @@ use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri::RunEvent;
 #[cfg(feature = "desktop")]
 use tauri::{Emitter, Manager};
+#[cfg(feature = "desktop")]
 use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 
 #[cfg(feature = "desktop")]
@@ -2155,12 +2156,14 @@ fn show_database_init_error_dialog(
 // 在应用主动退出前显式持久化窗口状态
 // ============================================================
 
+#[cfg(feature = "desktop")]
 fn window_state_flags() -> StateFlags {
     StateFlags::POSITION | StateFlags::SIZE | StateFlags::MAXIMIZED
 }
 
 /// 当前应用的退出路径会拦截 `ExitRequested` 并最终直接 `std::process::exit(0)`，
 /// 这里需要在真正结束进程前手动落盘，避免 window-state 插件的默认退出钩子被绕过。
+#[cfg(feature = "desktop")]
 pub fn save_window_state_before_exit(app_handle: &tauri::AppHandle) {
     if let Err(err) = app_handle.save_window_state(window_state_flags()) {
         log::error!("退出前保存窗口状态失败: {err}");

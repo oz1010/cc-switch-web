@@ -94,13 +94,13 @@ pub fn get_current_provider(ctx: &CoreContext, app: &str) -> Result<String, Stri
 /// 添加供应商
 pub fn add_provider(ctx: &CoreContext, app: &str, provider: Provider) -> Result<bool, String> {
     let app_type = AppType::from_str(app).map_err(|e| e.to_string())?;
-    ProviderService::add(ctx.app_state(), app_type, provider).map_err(|e| e.to_string())
+    ProviderService::add(ctx.app_state(), app_type, provider, false).map_err(|e| e.to_string())
 }
 
 /// 更新供应商
 pub fn update_provider(ctx: &CoreContext, app: &str, provider: Provider) -> Result<bool, String> {
     let app_type = AppType::from_str(app).map_err(|e| e.to_string())?;
-    ProviderService::update(ctx.app_state(), app_type, provider).map_err(|e| e.to_string())
+    ProviderService::update(ctx.app_state(), app_type, None, provider).map_err(|e| e.to_string())
 }
 
 /// 删除供应商
@@ -257,7 +257,7 @@ pub async fn stream_check_provider(
         .get(provider_id)
         .ok_or_else(|| format!("供应商 {provider_id} 不存在"))?;
 
-    let result = StreamCheckService::check_with_retry(&app_type, provider, &config, None, None)
+    let result = StreamCheckService::check_with_retry(&app_type, provider, &config, None, None, None)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -312,7 +312,7 @@ pub async fn stream_check_all_providers(
         }
 
         let result =
-            StreamCheckService::check_with_retry(&app_type, &provider, &config, None, None)
+            StreamCheckService::check_with_retry(&app_type, &provider, &config, None, None, None)
             .await
             .unwrap_or_else(|e| StreamCheckResult {
                 status: HealthStatus::Failed,
@@ -323,6 +323,7 @@ pub async fn stream_check_all_providers(
                 model_used: String::new(),
                 tested_at: Utc::now().timestamp(),
                 retry_count: 0,
+                error_category: None,
             });
 
         let _ = ctx.app_state().db.save_stream_check_log(
@@ -362,7 +363,7 @@ pub fn get_usage_summary(
 ) -> Result<UsageSummary, String> {
     ctx.app_state()
         .db
-        .get_usage_summary(start_date, end_date)
+        .get_usage_summary(start_date, end_date, None)
         .map_err(|e| e.to_string())
 }
 
@@ -373,21 +374,21 @@ pub fn get_usage_trends(
 ) -> Result<Vec<DailyStats>, String> {
     ctx.app_state()
         .db
-        .get_daily_trends(start_date, end_date)
+        .get_daily_trends(start_date, end_date, None)
         .map_err(|e| e.to_string())
 }
 
 pub fn get_provider_stats(ctx: &CoreContext) -> Result<Vec<ProviderStats>, String> {
     ctx.app_state()
         .db
-        .get_provider_stats()
+        .get_provider_stats(None, None, None)
         .map_err(|e| e.to_string())
 }
 
 pub fn get_model_stats(ctx: &CoreContext) -> Result<Vec<ModelStats>, String> {
     ctx.app_state()
         .db
-        .get_model_stats()
+        .get_model_stats(None, None, None)
         .map_err(|e| e.to_string())
 }
 
@@ -589,6 +590,10 @@ pub fn get_config_status(app: &str) -> Result<ConfigStatus, String> {
                 path: cc_switch::get_openclaw_dir().to_string_lossy().to_string(),
             }
         }
+        AppType::ClaudeDesktop | AppType::Hermes => ConfigStatus {
+            exists: false,
+            path: String::new(),
+        },
     };
 
     Ok(status)
@@ -626,6 +631,9 @@ pub fn get_config_dir(app: &str) -> Result<String, String> {
         AppType::Gemini => cc_switch::get_gemini_dir(),
         AppType::OpenCode => cc_switch::get_opencode_dir(),
         AppType::OpenClaw => cc_switch::get_openclaw_dir(),
+        AppType::ClaudeDesktop | AppType::Hermes => {
+            return Err(format!("配置目录不适用于 {app}"));
+        }
     };
     Ok(dir.to_string_lossy().to_string())
 }

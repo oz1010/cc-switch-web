@@ -16,6 +16,7 @@ use crate::services::provider::{
 use serde_json::{json, Value};
 use std::str::FromStr;
 use std::sync::Arc;
+#[cfg(feature = "desktop")]
 use tauri::Emitter;
 use tokio::sync::RwLock;
 
@@ -385,6 +386,7 @@ impl ProxyService {
                 if let Ok(Some(provider)) = self.db.get_provider_by_id(&current_id, app_type_str) {
                     if provider.category.as_deref() == Some("official") {
                         if let Some(handle) = self.app_handle.read().await.as_ref() {
+                            #[cfg(feature = "desktop")]
                             let _ = handle.emit(
                                 "proxy-official-warning",
                                 serde_json::json!({
@@ -392,6 +394,8 @@ impl ProxyService {
                                     "providerName": provider.name,
                                 }),
                             );
+                            #[cfg(not(feature = "desktop"))]
+                            let _ = handle;
                         }
                     }
                 }

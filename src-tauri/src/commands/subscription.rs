@@ -1,9 +1,12 @@
 use std::str::FromStr;
-use tauri::{Emitter, State};
-
 use crate::app_config::AppType;
 use crate::services::subscription::{CredentialStatus, SubscriptionQuota};
-use crate::store::AppState;
+
+#[cfg(feature = "desktop")]
+use {
+    tauri::{Emitter, State},
+    crate::store::AppState,
+};
 
 /// 查询官方订阅额度
 ///
@@ -13,6 +16,7 @@ use crate::store::AppState;
 /// 最新数据。失败快照写入后 `format_subscription_summary` 会通过 `success=false`
 /// 守卫返回 `None`，托盘 suffix 自然消失，避免长期滞留旧配额数字。
 /// Err 原样向前端返回，React Query 的 onError 不会被吞掉。
+#[cfg(feature = "desktop")]
 #[tauri::command]
 pub async fn get_subscription_quota(
     app: tauri::AppHandle,

@@ -227,6 +227,7 @@ pub fn delete_model_pricing(state: State<'_, AppState>, model_id: String) -> Res
 }
 
 /// 手动触发会话日志同步
+#[cfg(feature = "desktop")]
 #[tauri::command]
 pub fn sync_session_usage(
     state: State<'_, AppState>,
@@ -264,6 +265,7 @@ pub fn sync_session_usage(
 }
 
 /// 获取数据来源分布
+#[cfg(feature = "desktop")]
 #[tauri::command]
 pub fn get_usage_data_sources(
     state: State<'_, AppState>,

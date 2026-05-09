@@ -924,6 +924,7 @@ impl RequestForwarder {
         // GitHub Copilot 动态 endpoint 路由
         // 从 CopilotAuthManager 获取缓存的 API endpoint（支持企业版等非默认 endpoint）
         if is_copilot && !is_full_url {
+            #[cfg(feature = "desktop")]
             if let Some(app_handle) = &self.app_handle {
                 let copilot_state = app_handle.state::<CopilotAuthState>();
                 let copilot_auth = copilot_state.0.read().await;
@@ -1566,6 +1567,8 @@ impl RequestForwarder {
         let Some(app_handle) = &self.app_handle else {
             return;
         };
+        #[cfg(feature = "desktop")]
+        {
         let copilot_state = app_handle.state::<CopilotAuthState>();
         let copilot_auth = copilot_state.0.read().await;
         let account_id = provider
@@ -1591,6 +1594,7 @@ impl RequestForwarder {
         {
             log::info!("[Copilot] live-model resolve: {model_id} → {resolved}");
             body["model"] = serde_json::Value::String(resolved);
+        }
         }
     }
 

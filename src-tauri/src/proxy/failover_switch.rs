@@ -109,6 +109,8 @@ impl FailoverSwitchManager {
             != Some(provider_id);
 
         if let Some(app) = app_handle {
+            #[cfg(feature = "desktop")]
+            {
             if let Some(app_state) = app.try_state::<crate::store::AppState>() {
                 let outcome = app_state
                     .proxy_service
@@ -139,6 +141,11 @@ impl FailoverSwitchManager {
             });
             if let Err(e) = app.emit("provider-switched", event_data) {
                 log::error!("[Failover] 发射事件失败: {e}");
+            }
+            }
+            #[cfg(not(feature = "desktop"))]
+            {
+                crate::settings::set_current_provider(&app_type_enum, Some(provider_id))?;
             }
         } else {
             crate::settings::set_current_provider(&app_type_enum, Some(provider_id))?;

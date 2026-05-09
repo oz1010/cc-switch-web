@@ -8,7 +8,6 @@
 use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;
 use crate::services::subscription::{query_codex_quota, CredentialStatus, SubscriptionQuota};
 use std::sync::Arc;
-use tauri::State;
 use tokio::sync::RwLock;
 
 /// Codex OAuth 认证状态
@@ -20,10 +19,11 @@ pub struct CodexOAuthState(pub Arc<RwLock<CodexOAuthManager>>);
 /// - 没有任何账号时返回 `not_found`，前端 `SubscriptionQuotaView` 会静默不渲染
 /// - 复用 `services::subscription::query_codex_quota`，因此 wham/usage 端点协议
 ///   与 Codex CLI 路径完全一致
+#[cfg(feature = "desktop")]
 #[tauri::command(rename_all = "camelCase")]
 pub async fn get_codex_oauth_quota(
     account_id: Option<String>,
-    state: State<'_, CodexOAuthState>,
+    state: tauri::State<'_, CodexOAuthState>,
 ) -> Result<SubscriptionQuota, String> {
     let manager = state.0.read().await;
 
@@ -38,7 +38,7 @@ pub async fn get_codex_oauth_quota(
 
     // 获取（必要时自动刷新）access_token
     let token = match manager.get_valid_token_for_account(&id).await {
-        Ok(t) => t,
+        Ok(t) => t.to_owned(),
         Err(e) => {
             return Ok(SubscriptionQuota::error(
                 "codex_oauth",

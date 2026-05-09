@@ -385,10 +385,10 @@ export const handlers = [
   http.post("/api/invoke", async ({ request }) => {
     const { command } = await withJson<{ command: string; payload?: unknown }>(request);
     if (command === "auth.status") {
-      return success({ enabled: false });
+      return success({ result: { enabled: false } });
     }
     if (command === "auth.check") {
-      return success({ valid: true });
+      return success({ result: { valid: true } });
     }
     return success(null);
   }),

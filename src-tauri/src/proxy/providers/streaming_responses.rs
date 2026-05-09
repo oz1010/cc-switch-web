@@ -9,7 +9,7 @@
 //! 与 Chat Completions 的 delta chunk 模型完全不同，需要独立的状态机处理。
 
 use super::transform_responses::{build_anthropic_usage_from_responses, map_responses_stop_reason};
-use crate::proxy::sse::strip_sse_field;
+use crate::proxy::sse::{strip_sse_field, take_sse_block};
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
 use serde_json::{json, Value};
@@ -101,6 +101,7 @@ pub fn create_anthropic_sse_stream_from_responses<E: std::error::Error + Send + 
 ) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send {
     async_stream::stream! {
         let mut buffer = String::new();
+        let mut utf8_remainder: Vec<u8> = Vec::new();
         let mut message_id: Option<String> = None;
         let mut current_model: Option<String> = None;
         let mut has_sent_message_start = false;
@@ -118,14 +119,10 @@ pub fn create_anthropic_sse_stream_from_responses<E: std::error::Error + Send + 
         while let Some(chunk) = stream.next().await {
             match chunk {
                 Ok(bytes) => {
-                    let text = String::from_utf8_lossy(&bytes);
-                    buffer.push_str(&text);
+                    crate::proxy::sse::append_utf8_safe(&mut buffer, &mut utf8_remainder, &bytes);
 
                     // SSE 事件由 \n\n 分隔
-                    while let Some(pos) = buffer.find("\n\n") {
-                        let block = buffer[..pos].to_string();
-                        buffer = buffer[pos + 2..].to_string();
-
+                    while let Some(block) = take_sse_block(&mut buffer) {
                         if block.trim().is_empty() {
                             continue;
                         }
@@ -173,9 +170,12 @@ pub fn create_anthropic_sse_stream_from_responses<E: std::error::Error + Send + 
                                 }
 
                                 has_sent_message_start = true;
-                                // Build usage with cache tokens if available
+                                // Build usage with defensive null handling
+                                // Some() wrapper ensures build function always receives valid input
+                                // Fallback to empty object {} if usage field missing, ensuring message_start
+                                // event always has valid usage structure for VSCode Extension compatibility
                                 let start_usage = build_anthropic_usage_from_responses(
-                                    response_obj.get("usage"),
+                                    Some(response_obj.get("usage").unwrap_or(&json!({}))),
                                 );
 
                                 let event = json!({
@@ -673,9 +673,12 @@ pub fn create_anthropic_sse_stream_from_responses<E: std::error::Error + Send + 
                                 }
                                 fallback_open_index = None;
 
-                                let usage_json = response_obj.get("usage").map(|u| {
-                                    build_anthropic_usage_from_responses(Some(u))
-                                });
+                                // Defensive: Always build usage_json, even if usage field missing
+                                // Some() wrapper with fallback to {} ensures build_anthropic_usage_from_responses
+                                // always receives valid input, preventing null pointer errors in VSCode Extension
+                                let usage_json = build_anthropic_usage_from_responses(
+                                    Some(response_obj.get("usage").unwrap_or(&json!({})))
+                                );
 
                                 // Emit message_delta (with usage + stop_reason)
                                 let delta_event = json!({
@@ -974,7 +977,7 @@ mod tests {
             "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":5,\"output_tokens\":2}}}\n\n"
         );
 
-        let upstream = stream::iter(vec![Ok::<Bytes, std::io::Error>(Bytes::from(
+        let upstream = stream::iter(vec![Ok::<_, std::io::Error>(Bytes::from(
             input.as_bytes().to_vec(),
         ))]);
         let converted = create_anthropic_sse_stream_from_responses(upstream);
@@ -1028,5 +1031,46 @@ mod tests {
         assert_eq!(text_starts, 1);
         assert_eq!(text_stops, 1);
         assert_eq!(text_deltas, vec!["你".to_string(), "好".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn test_streaming_responses_chinese_split_across_chunks_no_replacement_chars() {
+        // Chinese text delta split across two TCP chunks.
+        let full = concat!(
+            "event: response.created\n",
+            "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_cn\",\"model\":\"gpt-4o\",\"usage\":{\"input_tokens\":5,\"output_tokens\":0}}}\n\n",
+            "event: response.output_text.delta\n",
+            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"你好世界\"}\n\n",
+            "event: response.completed\n",
+            "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":5,\"output_tokens\":4}}}\n\n"
+        );
+        let bytes = full.as_bytes();
+
+        // Find "你" and split inside it
+        let ni_start = bytes.windows(3).position(|w| w == "你".as_bytes()).unwrap();
+        let split_point = ni_start + 2; // split after second byte of "你"
+
+        let chunk1 = Bytes::from(bytes[..split_point].to_vec());
+        let chunk2 = Bytes::from(bytes[split_point..].to_vec());
+
+        let upstream = stream::iter(vec![
+            Ok::<_, std::io::Error>(chunk1),
+            Ok::<_, std::io::Error>(chunk2),
+        ]);
+        let converted = create_anthropic_sse_stream_from_responses(upstream);
+        let chunks: Vec<_> = converted.collect().await;
+        let merged = chunks
+            .into_iter()
+            .map(|c| String::from_utf8_lossy(c.unwrap().as_ref()).to_string())
+            .collect::<String>();
+
+        assert!(
+            merged.contains("你好世界"),
+            "expected '你好世界' in output, got replacement chars (U+FFFD)"
+        );
+        assert!(
+            !merged.contains('\u{FFFD}'),
+            "output must not contain U+FFFD replacement characters"
+        );
     }
 }

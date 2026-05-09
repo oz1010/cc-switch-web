@@ -8,7 +8,15 @@ import {
 } from "@/lib/platform-paths";
 import type { SettingsFormState } from "./useSettingsForm";
 
-type DirectoryKey = "appConfig" | "claude" | "codex" | "gemini" | "opencode";
+export type DirectoryAppId = Exclude<AppId, "claude-desktop">;
+type AppDirectoryKey =
+  | "claude"
+  | "codex"
+  | "gemini"
+  | "opencode"
+  | "openclaw"
+  | "hermes";
+type DirectoryKey = "appConfig" | AppDirectoryKey;
 
 export interface ResolvedDirectories {
   appConfig: string;
@@ -16,7 +24,34 @@ export interface ResolvedDirectories {
   codex: string;
   gemini: string;
   opencode: string;
+  openclaw: string;
+  hermes: string;
 }
+
+// Single source of truth for per-app directory metadata.
+const APP_DIRECTORY_META: Record<
+  DirectoryAppId,
+  { key: AppDirectoryKey; defaultFolder: string }
+> = {
+  claude: { key: "claude", defaultFolder: ".claude" },
+  codex: { key: "codex", defaultFolder: ".codex" },
+  gemini: { key: "gemini", defaultFolder: ".gemini" },
+  opencode: { key: "opencode", defaultFolder: ".config/opencode" },
+  openclaw: { key: "openclaw", defaultFolder: ".openclaw" },
+  hermes: { key: "hermes", defaultFolder: ".hermes" },
+};
+
+const DIRECTORY_KEY_TO_SETTINGS_FIELD: Record<
+  AppDirectoryKey,
+  keyof SettingsFormState
+> = {
+  claude: "claudeConfigDir",
+  codex: "codexConfigDir",
+  gemini: "geminiConfigDir",
+  opencode: "opencodeConfigDir",
+  openclaw: "openclawConfigDir",
+  hermes: "hermesConfigDir",
+};
 
 const sanitizeDir = (value?: string | null): string | undefined => {
   if (!value) return undefined;
@@ -34,19 +69,18 @@ export interface UseDirectorySettingsResult {
   resolvedDirs: ResolvedDirectories;
   isLoading: boolean;
   initialAppConfigDir?: string;
-  updateDirectory: (app: AppId, value?: string) => void;
+  updateDirectory: (app: DirectoryAppId, value?: string) => void;
   updateAppConfigDir: (value?: string) => void;
-  browseDirectory: (app: AppId) => Promise<void>;
+  browseDirectory: (app: DirectoryAppId) => Promise<void>;
   browseAppConfigDir: () => Promise<void>;
-  resetDirectory: (app: AppId) => Promise<void>;
+  resetDirectory: (app: DirectoryAppId) => Promise<void>;
   resetAppConfigDir: () => Promise<void>;
-  resetAllDirectories: (
-    claudeDir?: string,
-    codexDir?: string,
-    geminiDir?: string,
-    opencodeDir?: string,
-  ) => void;
+  resetAllDirectories: (overrides?: ResolvedAppDirectoryOverrides) => void;
 }
+
+export type ResolvedAppDirectoryOverrides = Partial<
+  Record<AppDirectoryKey, string | undefined>
+>;
 
 /**
  * useDirectorySettings - 目录管理
@@ -72,6 +106,8 @@ export function useDirectorySettings({
     codex: "",
     gemini: "",
     opencode: "",
+    openclaw: "",
+    hermes: "",
   });
   const [isLoading, setIsLoading] = useState(true);
 
@@ -81,6 +117,8 @@ export function useDirectorySettings({
     codex: "",
     gemini: "",
     opencode: "",
+    openclaw: "",
+    hermes: "",
   });
   const initialAppConfigDirRef = useRef<string | undefined>(undefined);
 
@@ -97,22 +135,30 @@ export function useDirectorySettings({
           codexDir,
           geminiDir,
           opencodeDir,
+          openclawDir,
+          hermesDir,
           defaultAppConfig,
           defaultClaudeDir,
           defaultCodexDir,
           defaultGeminiDir,
           defaultOpencodeDir,
+          defaultOpenclawDir,
+          defaultHermesDir,
         ] = await Promise.all([
           settingsApi.getAppConfigDirOverride(),
           settingsApi.getConfigDir("claude"),
           settingsApi.getConfigDir("codex"),
           settingsApi.getConfigDir("gemini"),
           settingsApi.getConfigDir("opencode"),
+          settingsApi.getConfigDir("openclaw"),
+          settingsApi.getConfigDir("hermes"),
           computeDefaultAppConfigDir(),
           computeDefaultConfigDir("claude"),
           computeDefaultConfigDir("codex"),
           computeDefaultConfigDir("gemini"),
           computeDefaultConfigDir("opencode"),
+          computeDefaultConfigDir("openclaw"),
+          computeDefaultConfigDir("hermes"),
         ]);
 
         if (!active) return;
@@ -125,6 +171,8 @@ export function useDirectorySettings({
           codex: defaultCodexDir ?? "",
           gemini: defaultGeminiDir ?? "",
           opencode: defaultOpencodeDir ?? "",
+          openclaw: defaultOpenclawDir ?? "",
+          hermes: defaultHermesDir ?? "",
         };
 
         setAppConfigDir(normalizedOverride);
@@ -136,6 +184,8 @@ export function useDirectorySettings({
           codex: codexDir || defaultsRef.current.codex,
           gemini: geminiDir || defaultsRef.current.gemini,
           opencode: opencodeDir || defaultsRef.current.opencode,
+          openclaw: openclawDir || defaultsRef.current.openclaw,
+          hermes: hermesDir || defaultsRef.current.hermes,
         });
       } catch (error) {
         console.error(
@@ -161,21 +211,18 @@ export function useDirectorySettings({
       if (key === "appConfig") {
         setAppConfigDir(sanitized);
       } else {
-        onUpdateSettings(
-          key === "claude"
-            ? { claudeConfigDir: sanitized }
-            : key === "codex"
-              ? { codexConfigDir: sanitized }
-              : key === "gemini"
-                ? { geminiConfigDir: sanitized }
-                : { opencodeConfigDir: sanitized },
-        );
+        onUpdateSettings({
+          [DIRECTORY_KEY_TO_SETTINGS_FIELD[key]]: sanitized,
+        });
       }
 
-      setResolvedDirs((prev) => ({
-        ...prev,
-        [key]: sanitized ?? defaultsRef.current[key],
-      }));
+      setResolvedDirs((prev) => {
+        const next = sanitized ?? defaultsRef.current[key];
+        // Same-ref early-return: unchanged value shouldn't cascade renders
+        // through the settings tree.
+        if (prev[key] === next) return prev;
+        return { ...prev, [key]: next };
+      });
     },
     [onUpdateSettings],
   );
@@ -188,39 +235,18 @@ export function useDirectorySettings({
   );
 
   const updateDirectory = useCallback(
-    (app: AppId, value?: string) => {
-      updateDirectoryState(
-        app === "claude"
-          ? "claude"
-          : app === "codex"
-            ? "codex"
-            : app === "gemini"
-              ? "gemini"
-              : "opencode",
-        value,
-      );
+    (app: DirectoryAppId, value?: string) => {
+      updateDirectoryState(APP_DIRECTORY_META[app].key, value);
     },
     [updateDirectoryState],
   );
 
   const browseDirectory = useCallback(
-    async (app: AppId) => {
-      const key: DirectoryKey =
-        app === "claude"
-          ? "claude"
-          : app === "codex"
-            ? "codex"
-            : app === "gemini"
-              ? "gemini"
-              : "opencode";
+    async (app: DirectoryAppId) => {
+      const key = APP_DIRECTORY_META[app].key;
+      const settingsField = DIRECTORY_KEY_TO_SETTINGS_FIELD[key];
       const currentValue =
-        key === "claude"
-          ? (settings?.claudeConfigDir ?? resolvedDirs.claude)
-          : key === "codex"
-            ? (settings?.codexConfigDir ?? resolvedDirs.codex)
-            : key === "gemini"
-              ? (settings?.geminiConfigDir ?? resolvedDirs.gemini)
-              : (settings?.opencodeConfigDir ?? resolvedDirs.opencode);
+        (settings?.[settingsField] as string | undefined) ?? resolvedDirs[key];
 
       try {
         const picked = await settingsApi.selectConfigDirectory(currentValue);
@@ -260,15 +286,8 @@ export function useDirectorySettings({
   }, [appConfigDir, resolvedDirs.appConfig, t, updateDirectoryState]);
 
   const resetDirectory = useCallback(
-    async (app: AppId) => {
-      const key: DirectoryKey =
-        app === "claude"
-          ? "claude"
-          : app === "codex"
-            ? "codex"
-            : app === "gemini"
-              ? "gemini"
-              : "opencode";
+    async (app: DirectoryAppId) => {
+      const key = APP_DIRECTORY_META[app].key;
       if (!defaultsRef.current[key]) {
         const fallback = await computeDefaultConfigDir(app);
         if (fallback) {
@@ -297,20 +316,17 @@ export function useDirectorySettings({
   }, [updateDirectoryState]);
 
   const resetAllDirectories = useCallback(
-    (
-      claudeDir?: string,
-      codexDir?: string,
-      geminiDir?: string,
-      opencodeDir?: string,
-    ) => {
+    (overrides?: ResolvedAppDirectoryOverrides) => {
       setAppConfigDir(initialAppConfigDirRef.current);
       setResolvedDirs({
         appConfig:
           initialAppConfigDirRef.current ?? defaultsRef.current.appConfig,
-        claude: claudeDir ?? defaultsRef.current.claude,
-        codex: codexDir ?? defaultsRef.current.codex,
-        gemini: geminiDir ?? defaultsRef.current.gemini,
-        opencode: opencodeDir ?? defaultsRef.current.opencode,
+        claude: overrides?.claude ?? defaultsRef.current.claude,
+        codex: overrides?.codex ?? defaultsRef.current.codex,
+        gemini: overrides?.gemini ?? defaultsRef.current.gemini,
+        opencode: overrides?.opencode ?? defaultsRef.current.opencode,
+        openclaw: overrides?.openclaw ?? defaultsRef.current.openclaw,
+        hermes: overrides?.hermes ?? defaultsRef.current.hermes,
       });
     },
     [],

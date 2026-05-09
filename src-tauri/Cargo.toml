@@ -1,6 +1,6 @@
 [package]
 name = "cc-switch"
-version = "3.12.8"
+version = "3.14.1"
 description = "All-in-One Assistant for Claude Code, Codex & Gemini CLI"
 authors = ["Jason Young"]
 license = "MIT"
@@ -28,6 +28,7 @@ desktop = [
   "dep:tauri-plugin-store",
   "dep:tauri-plugin-deep-link",
   "dep:tauri-plugin-single-instance",
+  "dep:tauri-plugin-window-state",
   "dep:webkit2gtk",
 ]
 headless = []
@@ -49,10 +50,12 @@ tauri-plugin-updater = { version = "2", optional = true }
 tauri-plugin-dialog = { version = "2", optional = true }
 tauri-plugin-store = { version = "2", optional = true }
 tauri-plugin-deep-link = { version = "2", optional = true }
+tauri-plugin-window-state = { version = "2", optional = true }
 dirs = "5.0"
 toml = "0.8"
 toml_edit = "0.22"
 reqwest = { version = "0.12", features = ["rustls-tls", "json", "stream", "socks"] }
+arboard = "3.6"
 flate2 = "1"
 brotli = "7"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }

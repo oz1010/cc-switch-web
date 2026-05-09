@@ -95,6 +95,10 @@ export const settingsApi = {
     await invoke("open_config_folder", { app: appId });
   },
 
+  async pickDirectory(defaultPath?: string): Promise<string | null> {
+    return await invoke("pick_directory", { defaultPath });
+  },
+
   async selectConfigDirectory(defaultPath?: string): Promise<string | null> {
     return await invoke("pick_directory", { defaultPath });
   },
@@ -246,7 +250,13 @@ export const settingsApi = {
     } catch {
       throw new Error("Invalid URL");
     }
-    await invoke("open_external", { url });
+    if (typeof window === "undefined") {
+      return;
+    }
+    const opened = window.open(url, "_blank", "noopener,noreferrer");
+    if (!opened) {
+      window.location.assign(url);
+    }
   },
 
   async setAutoLaunch(enabled: boolean): Promise<boolean> {

@@ -72,7 +72,7 @@ pub fn is_auto_launch_enabled() -> Result<bool, AppError> {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(target_os = "macos")]
+    #[allow(unused_imports)]
     use super::*;
 
     #[cfg(target_os = "macos")]

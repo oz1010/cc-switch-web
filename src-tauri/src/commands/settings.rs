@@ -42,6 +42,8 @@ pub async fn save_settings(settings: crate::settings::AppSettings) -> Result<boo
 /// 重启应用程序（当 app_config_dir 变更后使用）
 #[tauri::command]
 pub async fn restart_app(app: AppHandle) -> Result<bool, String> {
+    crate::save_window_state_before_exit(&app);
+
     // 在后台延迟重启，让函数有时间返回响应
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -243,6 +245,30 @@ pub async fn set_optimizer_config(
     state
         .db
         .set_optimizer_config(&config)
+        .map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+/// 获取 Copilot 优化器配置
+#[tauri::command]
+pub async fn get_copilot_optimizer_config(
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<crate::proxy::types::CopilotOptimizerConfig, String> {
+    state
+        .db
+        .get_copilot_optimizer_config()
+        .map_err(|e| e.to_string())
+}
+
+/// 设置 Copilot 优化器配置
+#[tauri::command]
+pub async fn set_copilot_optimizer_config(
+    state: tauri::State<'_, crate::AppState>,
+    config: crate::proxy::types::CopilotOptimizerConfig,
+) -> Result<bool, String> {
+    state
+        .db
+        .set_copilot_optimizer_config(&config)
         .map_err(|e| e.to_string())?;
     Ok(true)
 }

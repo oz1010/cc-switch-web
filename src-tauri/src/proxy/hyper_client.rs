@@ -369,6 +369,10 @@ async fn send_raw_request(
             .write_all(&raw)
             .await
             .map_err(|e| ProxyError::ForwardFailed(format!("Write failed: {e}")))?;
+        tls_stream
+            .flush()
+            .await
+            .map_err(|e| ProxyError::ForwardFailed(format!("Flush failed: {e}")))?;
 
         let filtered = WriteFilter::new(tls_stream);
         do_hyper_response(filtered, method.clone()).await
@@ -378,6 +382,10 @@ async fn send_raw_request(
             .write_all(&raw)
             .await
             .map_err(|e| ProxyError::ForwardFailed(format!("Write failed: {e}")))?;
+        stream
+            .flush()
+            .await
+            .map_err(|e| ProxyError::ForwardFailed(format!("Flush failed: {e}")))?;
 
         let filtered = WriteFilter::new(stream);
         do_hyper_response(filtered, method.clone()).await
@@ -451,6 +459,10 @@ async fn connect_via_proxy(
         .write_all(connect_req.as_bytes())
         .await
         .map_err(|e| ProxyError::ForwardFailed(format!("CONNECT write failed: {e}")))?;
+    stream
+        .flush()
+        .await
+        .map_err(|e| ProxyError::ForwardFailed(format!("CONNECT flush failed: {e}")))?;
 
     // Read the proxy's response status line
     let mut reader = BufReader::new(&mut stream);

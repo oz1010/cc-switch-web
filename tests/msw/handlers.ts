@@ -380,4 +380,16 @@ export const handlers = [
   ),
   http.post(`${TAURI_ENDPOINT}/reset_circuit_breaker`, () => success(true)),
   http.post(`${TAURI_ENDPOINT}/get_circuit_breaker_stats`, () => success(null)),
+
+  // Auth API (direct /api/invoke, not via Tauri local endpoint)
+  http.post("/api/invoke", async ({ request }) => {
+    const { command } = await withJson<{ command: string; payload?: unknown }>(request);
+    if (command === "auth.status") {
+      return success({ enabled: false });
+    }
+    if (command === "auth.check") {
+      return success({ valid: true });
+    }
+    return success(null);
+  }),
 ];

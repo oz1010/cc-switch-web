@@ -275,6 +275,25 @@ fn get_str_param<'a>(params: &'a Value, keys: &[&str]) -> Result<&'a str, RpcErr
         .ok_or_else(|| RpcError::invalid_params(format!("missing '{}' field", keys[0])))
 }
 
+fn get_optional_str_param<'a>(
+    params: &'a Value,
+    keys: &[&str],
+) -> Result<Option<&'a str>, RpcError> {
+    for key in keys {
+        match params.get(*key) {
+            Some(value) => {
+                return value
+                    .as_str()
+                    .map(Some)
+                    .ok_or_else(|| RpcError::invalid_params(format!("invalid '{}' field", key)));
+            }
+            None => continue,
+        }
+    }
+
+    Ok(None)
+}
+
 fn get_bool_param(params: &Value, keys: &[&str]) -> Result<bool, RpcError> {
     keys.iter()
         .find_map(|key| params.get(*key).and_then(|v| v.as_bool()))
@@ -956,8 +975,9 @@ pub async fn dispatch_command(
         "get_usage_summary" => {
             let start_date = get_optional_i64_param(params, &["startDate", "start_date"])?;
             let end_date = get_optional_i64_param(params, &["endDate", "end_date"])?;
+            let app_type = get_optional_str_param(params, &["appType", "app_type"])?;
 
-            let summary = cc_switch_core::get_usage_summary(core, start_date, end_date)
+            let summary = cc_switch_core::get_usage_summary(core, start_date, end_date, app_type)
                 .map_err(RpcError::app_error)?;
 
             serde_json::to_value(summary).map_err(|e| RpcError::internal_error(e.to_string()))
@@ -966,21 +986,32 @@ pub async fn dispatch_command(
         "get_usage_trends" => {
             let start_date = get_optional_i64_param(params, &["startDate", "start_date"])?;
             let end_date = get_optional_i64_param(params, &["endDate", "end_date"])?;
+            let app_type = get_optional_str_param(params, &["appType", "app_type"])?;
 
-            let trends = cc_switch_core::get_usage_trends(core, start_date, end_date)
+            let trends = cc_switch_core::get_usage_trends(core, start_date, end_date, app_type)
                 .map_err(RpcError::app_error)?;
 
             serde_json::to_value(trends).map_err(|e| RpcError::internal_error(e.to_string()))
         }
 
         "get_provider_stats" => {
-            let stats = cc_switch_core::get_provider_stats(core).map_err(RpcError::app_error)?;
+            let start_date = get_optional_i64_param(params, &["startDate", "start_date"])?;
+            let end_date = get_optional_i64_param(params, &["endDate", "end_date"])?;
+            let app_type = get_optional_str_param(params, &["appType", "app_type"])?;
+
+            let stats = cc_switch_core::get_provider_stats(core, start_date, end_date, app_type)
+                .map_err(RpcError::app_error)?;
 
             serde_json::to_value(stats).map_err(|e| RpcError::internal_error(e.to_string()))
         }
 
         "get_model_stats" => {
-            let stats = cc_switch_core::get_model_stats(core).map_err(RpcError::app_error)?;
+            let start_date = get_optional_i64_param(params, &["startDate", "start_date"])?;
+            let end_date = get_optional_i64_param(params, &["endDate", "end_date"])?;
+            let app_type = get_optional_str_param(params, &["appType", "app_type"])?;
+
+            let stats = cc_switch_core::get_model_stats(core, start_date, end_date, app_type)
+                .map_err(RpcError::app_error)?;
 
             serde_json::to_value(stats).map_err(|e| RpcError::internal_error(e.to_string()))
         }

@@ -1120,10 +1120,11 @@ pub fn get_usage_summary(
     ctx: &CoreContext,
     start_date: Option<i64>,
     end_date: Option<i64>,
+    app_type: Option<&str>,
 ) -> Result<UsageSummary, String> {
     ctx.app_state()
         .db
-        .get_usage_summary(start_date, end_date, None)
+        .get_usage_summary(start_date, end_date, app_type)
         .map_err(|e| e.to_string())
 }
 
@@ -1131,24 +1132,35 @@ pub fn get_usage_trends(
     ctx: &CoreContext,
     start_date: Option<i64>,
     end_date: Option<i64>,
+    app_type: Option<&str>,
 ) -> Result<Vec<DailyStats>, String> {
     ctx.app_state()
         .db
-        .get_daily_trends(start_date, end_date, None)
+        .get_daily_trends(start_date, end_date, app_type)
         .map_err(|e| e.to_string())
 }
 
-pub fn get_provider_stats(ctx: &CoreContext) -> Result<Vec<ProviderStats>, String> {
+pub fn get_provider_stats(
+    ctx: &CoreContext,
+    start_date: Option<i64>,
+    end_date: Option<i64>,
+    app_type: Option<&str>,
+) -> Result<Vec<ProviderStats>, String> {
     ctx.app_state()
         .db
-        .get_provider_stats(None, None, None)
+        .get_provider_stats(start_date, end_date, app_type)
         .map_err(|e| e.to_string())
 }
 
-pub fn get_model_stats(ctx: &CoreContext) -> Result<Vec<ModelStats>, String> {
+pub fn get_model_stats(
+    ctx: &CoreContext,
+    start_date: Option<i64>,
+    end_date: Option<i64>,
+    app_type: Option<&str>,
+) -> Result<Vec<ModelStats>, String> {
     ctx.app_state()
         .db
-        .get_model_stats(None, None, None)
+        .get_model_stats(start_date, end_date, app_type)
         .map_err(|e| e.to_string())
 }
 
@@ -1175,7 +1187,28 @@ pub fn get_request_detail(
 }
 
 pub fn sync_session_usage(ctx: &CoreContext) -> Result<SessionSyncResult, String> {
-    cc_switch::sync_all_session_usage(ctx.app_state().db.as_ref()).map_err(|e| e.to_string())
+    let result =
+        cc_switch::sync_all_session_usage(ctx.app_state().db.as_ref()).map_err(|e| e.to_string())?;
+
+    if let Some(error) = result.errors.first() {
+        log::warn!(
+            "[SESSION-SYNC] completed with errors: imported={}, skipped={}, files_scanned={}, errors={}, first_error={}",
+            result.imported,
+            result.skipped,
+            result.files_scanned,
+            result.errors.len(),
+            error
+        );
+    } else {
+        log::info!(
+            "[SESSION-SYNC] completed: imported={}, skipped={}, files_scanned={}",
+            result.imported,
+            result.skipped,
+            result.files_scanned
+        );
+    }
+
+    Ok(result)
 }
 
 pub fn get_usage_data_sources(ctx: &CoreContext) -> Result<Vec<DataSourceSummary>, String> {

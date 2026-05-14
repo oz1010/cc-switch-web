@@ -35,7 +35,7 @@ export function UsageTrendChart({
 }: UsageTrendChartProps) {
   const { t, i18n } = useTranslation();
   const { startDate, endDate } = resolveUsageRange(range);
-  const { data: trends, isLoading } = useUsageTrends(range, appType, {
+  const { data: trends, isLoading, error } = useUsageTrends(range, appType, {
     refetchInterval: refreshIntervalMs > 0 ? refreshIntervalMs : false,
   });
 
@@ -43,6 +43,14 @@ export function UsageTrendChart({
     return (
       <div className="flex h-[350px] items-center justify-center rounded-xl bg-card/40 border border-border/50">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground/30" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive">
+        {t("usage.loadTrendsError", "加载使用趋势失败")}: {String(error)}
       </div>
     );
   }

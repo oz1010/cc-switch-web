@@ -1174,6 +1174,9 @@
       "resync": "Sync",
       "imported": "Imported {{count}} records from session logs",
       "upToDate": "Session logs are up to date",
+      "noImport": "Scanned {{filesScanned}} files, no new records imported, skipped {{skipped}} records",
+      "noFiles": "No session log files found",
+      "completedWithErrors": "Scanned {{filesScanned}} files, skipped {{skipped}} records, {{errors}} errors: {{message}}",
       "failed": "Session sync failed"
     },
     "totalRecords": "{{total}} records total",

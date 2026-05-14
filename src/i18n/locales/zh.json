@@ -1174,6 +1174,9 @@
       "resync": "同步",
       "imported": "从会话日志导入了 {{count}} 条记录",
       "upToDate": "会话日志已是最新",
+      "noImport": "已扫描 {{filesScanned}} 个文件，未导入新记录，跳过 {{skipped}} 条",
+      "noFiles": "未找到会话日志文件",
+      "completedWithErrors": "已扫描 {{filesScanned}} 个文件，跳过 {{skipped}} 条，{{errors}} 个错误：{{message}}",
       "failed": "会话同步失败"
     },
     "totalRecords": "共 {{total}} 条记录",

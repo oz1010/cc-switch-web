@@ -1,14 +1,45 @@
 import type { ApiTransport, UnlistenFn } from "./types";
 
 const API_BASE = import.meta.env.VITE_CC_SWITCH_API_BASE || "/api";
+const USAGE_INVOKE_TIMEOUT_MS = 30000;
+
+const USAGE_COMMANDS = new Set([
+  "get_usage_summary",
+  "get_usage_trends",
+  "get_provider_stats",
+  "get_model_stats",
+  "get_request_logs",
+  "get_usage_data_sources",
+  "sync_session_usage",
+]);
 
 async function httpInvoke<T>(command: string, payload?: unknown): Promise<T> {
-  const res = await fetch(`${API_BASE}/invoke`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include", // Include cookies for auth
-    body: JSON.stringify({ command, payload: payload ?? {} }),
-  });
+  const controller = USAGE_COMMANDS.has(command)
+    ? new AbortController()
+    : undefined;
+  const timeoutId = controller
+    ? window.setTimeout(() => controller.abort(), USAGE_INVOKE_TIMEOUT_MS)
+    : undefined;
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/invoke`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include", // Include cookies for auth
+      body: JSON.stringify({ command, payload: payload ?? {} }),
+      signal: controller?.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error(`Invoke timed out for ${command}`);
+    }
+    throw error;
+  } finally {
+    if (timeoutId != null) {
+      window.clearTimeout(timeoutId);
+    }
+  }
 
   const text = await res.text();
   if (!res.ok) {

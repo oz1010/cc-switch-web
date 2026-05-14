@@ -24,7 +24,7 @@ export function DataSourceBar({ refreshIntervalMs }: DataSourceBarProps) {
   const queryClient = useQueryClient();
   const [syncing, setSyncing] = useState(false);
 
-  const { data: sources } = useQuery({
+  const { data: sources = [] } = useQuery({
     queryKey: [...usageKeys.all, "data-sources"],
     queryFn: usageApi.getDataSourceBreakdown,
     refetchInterval: refreshIntervalMs > 0 ? refreshIntervalMs : false,
@@ -35,6 +35,13 @@ export function DataSourceBar({ refreshIntervalMs }: DataSourceBarProps) {
     setSyncing(true);
     try {
       const result = await usageApi.syncSessionUsage();
+      console.info("[DataSourceBar] Session sync result", result);
+      if (result.errors.length > 0) {
+        console.warn("[DataSourceBar] Session sync errors", result.errors);
+      }
+
+      queryClient.invalidateQueries({ queryKey: usageKeys.all });
+
       if (result.imported > 0) {
         toast.success(
           t("usage.sessionSync.imported", {
@@ -42,16 +49,35 @@ export function DataSourceBar({ refreshIntervalMs }: DataSourceBarProps) {
             defaultValue: "Imported {{count}} records from session logs",
           }),
         );
-        // Refresh all usage data
-        queryClient.invalidateQueries({ queryKey: usageKeys.all });
+      } else if (result.errors.length > 0) {
+        toast.error(
+          t("usage.sessionSync.completedWithErrors", {
+            filesScanned: result.filesScanned,
+            skipped: result.skipped,
+            errors: result.errors.length,
+            message: result.errors[0],
+            defaultValue:
+              "Scanned {{filesScanned}} files, skipped {{skipped}} records, {{errors}} errors: {{message}}",
+          }),
+        );
+      } else if (result.filesScanned > 0) {
+        toast.info(
+          t("usage.sessionSync.noImport", {
+            filesScanned: result.filesScanned,
+            skipped: result.skipped,
+            defaultValue:
+              "Scanned {{filesScanned}} files, no new records imported, skipped {{skipped}} records",
+          }),
+        );
       } else {
         toast.info(
-          t("usage.sessionSync.upToDate", {
-            defaultValue: "Session logs are up to date",
+          t("usage.sessionSync.noFiles", {
+            defaultValue: "No session log files found",
           }),
         );
       }
-    } catch {
+    } catch (error) {
+      console.error("[DataSourceBar] Session sync failed", error);
       toast.error(
         t("usage.sessionSync.failed", {
           defaultValue: "Session sync failed",
@@ -62,10 +88,6 @@ export function DataSourceBar({ refreshIntervalMs }: DataSourceBarProps) {
     }
   };
 
-  if (!sources || sources.length === 0) {
-    return null;
-  }
-
   const hasNonProxy = sources.some((s) => s.dataSource !== "proxy");
 
   return (
@@ -74,24 +96,30 @@ export function DataSourceBar({ refreshIntervalMs }: DataSourceBarProps) {
         {t("usage.dataSources", { defaultValue: "Data Sources" })}:
       </span>
       <div className="flex items-center gap-3 flex-wrap">
-        {sources.map((source) => (
-          <div
-            key={source.dataSource}
-            className="flex items-center gap-1.5 bg-background/50 rounded-md px-2 py-1"
-          >
-            {DATA_SOURCE_ICONS[source.dataSource] ?? (
-              <Database className="h-3.5 w-3.5" />
-            )}
-            <span>
-              {t(`usage.dataSource.${source.dataSource}`, {
-                defaultValue: source.dataSource,
-              })}
-            </span>
-            <span className="font-mono font-medium text-foreground/80">
-              {source.requestCount.toLocaleString()}
-            </span>
-          </div>
-        ))}
+        {sources.length > 0 ? (
+          sources.map((source) => (
+            <div
+              key={source.dataSource}
+              className="flex items-center gap-1.5 bg-background/50 rounded-md px-2 py-1"
+            >
+              {DATA_SOURCE_ICONS[source.dataSource] ?? (
+                <Database className="h-3.5 w-3.5" />
+              )}
+              <span>
+                {t(`usage.dataSource.${source.dataSource}`, {
+                  defaultValue: source.dataSource,
+                })}
+              </span>
+              <span className="font-mono font-medium text-foreground/80">
+                {source.requestCount.toLocaleString()}
+              </span>
+            </div>
+          ))
+        ) : (
+          <span className="text-muted-foreground">
+            {t("usage.noData", { defaultValue: "暂无数据" })}
+          </span>
+        )}
       </div>
 
       <div className="ml-auto">

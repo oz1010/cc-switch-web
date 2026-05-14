@@ -5,6 +5,7 @@ import { UsageTrendChart } from "./UsageTrendChart";
 import { RequestLogTable } from "./RequestLogTable";
 import { ProviderStatsTable } from "./ProviderStatsTable";
 import { ModelStatsTable } from "./ModelStatsTable";
+import { DataSourceBar } from "./DataSourceBar";
 import type { AppTypeFilter, UsageRangeSelection } from "@/types/usage";
 import { motion } from "framer-motion";
 import {
@@ -126,6 +127,8 @@ export function UsageDashboard() {
           </div>
         </div>
       </div>
+
+      <DataSourceBar refreshIntervalMs={refreshIntervalMs} />
 
       <UsageSummaryCards
         range={range}

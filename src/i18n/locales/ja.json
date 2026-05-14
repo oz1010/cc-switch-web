@@ -1174,6 +1174,9 @@
       "resync": "同期",
       "imported": "セッションログから {{count}} 件のレコードをインポートしました",
       "upToDate": "セッションログは最新です",
+      "noImport": "{{filesScanned}} 個のファイルをスキャンしました。新しいレコードはなく、{{skipped}} 件をスキップしました",
+      "noFiles": "セッションログファイルが見つかりません",
+      "completedWithErrors": "{{filesScanned}} 個のファイルをスキャンし、{{skipped}} 件をスキップ、{{errors}} 件のエラー: {{message}}",
       "failed": "セッション同期に失敗しました"
     },
     "totalRecords": "全 {{total}} 件",

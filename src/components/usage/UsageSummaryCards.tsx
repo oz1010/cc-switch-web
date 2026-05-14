@@ -20,7 +20,7 @@ export function UsageSummaryCards({
 }: UsageSummaryCardsProps) {
   const { t } = useTranslation();
 
-  const { data: summary, isLoading } = useUsageSummary(range, appType, {
+  const { data: summary, isLoading, error } = useUsageSummary(range, appType, {
     refetchInterval: refreshIntervalMs > 0 ? refreshIntervalMs : false,
   });
 
@@ -131,6 +131,16 @@ export function UsageSummaryCards({
           </Card>
         ))}
       </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card className="border border-destructive/30 bg-destructive/5">
+        <CardContent className="p-6 text-sm text-destructive">
+          {t("usage.loadStatsError", "加载用量统计失败")}: {String(error)}
+        </CardContent>
+      </Card>
     );
   }
 

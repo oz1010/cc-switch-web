@@ -55,13 +55,14 @@ export function generateThirdPartyConfig(
   modelName = "gpt-5.4",
 ): string {
   const tomlString = (value: string) => JSON.stringify(value);
+  const providerKey = providerName.replace(/[^A-Za-z0-9_-]/g, "_");
 
-  return `model_provider = "custom"
+  return `model_provider = ${tomlString(providerKey)}
 model = ${tomlString(modelName)}
 model_reasoning_effort = "high"
 disable_response_storage = true
 
-[model_providers.custom]
+[model_providers.${providerKey}]
 name = ${tomlString(providerName)}
 base_url = ${tomlString(baseUrl)}
 wire_api = "responses"

@@ -149,6 +149,50 @@ export const hermesProviderPresets: HermesProviderPreset[] = [
     },
   },
   {
+    name: "火山Agentplan",
+    websiteUrl:
+      "https://www.volcengine.com/activity/agentplan?utm_campaign=hw&utm_content=ccswitch&utm_medium=devrel_tool_web&utm_source=OWO&utm_term=ccswitch",
+    apiKeyUrl:
+      "https://www.volcengine.com/activity/agentplan?utm_campaign=hw&utm_content=ccswitch&utm_medium=devrel_tool_web&utm_source=OWO&utm_term=ccswitch",
+    settingsConfig: {
+      name: "huoshan_agentplan",
+      base_url: "https://ark.cn-beijing.volces.com/api/coding/v3",
+      api_key: "",
+      api_mode: "chat_completions",
+      models: [{ id: "ark-code-latest", name: "Ark Code Latest" }],
+    },
+    category: "cn_official",
+    isPartner: true,
+    partnerPromotionKey: "volcengine_agentplan",
+    icon: "huoshan",
+    iconColor: "#3370FF",
+    suggestedDefaults: {
+      model: { default: "ark-code-latest", provider: "huoshan_agentplan" },
+    },
+  },
+  {
+    name: "BytePlus",
+    websiteUrl:
+      "https://www.byteplus.com/en/product/modelark?utm_campaign=hw&utm_content=ccswitch&utm_medium=devrel_tool_web&utm_source=OWO&utm_term=ccswitch",
+    apiKeyUrl:
+      "https://www.byteplus.com/en/product/modelark?utm_campaign=hw&utm_content=ccswitch&utm_medium=devrel_tool_web&utm_source=OWO&utm_term=ccswitch",
+    settingsConfig: {
+      name: "byteplus",
+      base_url: "https://ark.ap-southeast.bytepluses.com/api/coding/v3",
+      api_key: "",
+      api_mode: "chat_completions",
+      models: [{ id: "ark-code-latest", name: "Ark Code Latest" }],
+    },
+    category: "cn_official",
+    isPartner: true,
+    partnerPromotionKey: "byteplus",
+    icon: "byteplus",
+    iconColor: "#3370FF",
+    suggestedDefaults: {
+      model: { default: "ark-code-latest", provider: "byteplus" },
+    },
+  },
+  {
     name: "OpenRouter",
     nameKey: "providerForm.presets.openrouter",
     websiteUrl: "https://openrouter.ai",
@@ -1131,3 +1175,23 @@ export const hermesProviderPresets: HermesProviderPreset[] = [
     },
   },
 ];
+
+const HERMES_PARTNER_PRESET_ORDER = [
+  "Shengsuanyun",
+  "火山Agentplan",
+  "BytePlus",
+  "DouBaoSeed",
+];
+
+hermesProviderPresets.splice(
+  0,
+  hermesProviderPresets.length,
+  ...[...hermesProviderPresets].sort((a, b) => {
+    const aIndex = HERMES_PARTNER_PRESET_ORDER.indexOf(a.name);
+    const bIndex = HERMES_PARTNER_PRESET_ORDER.indexOf(b.name);
+    if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+    if (aIndex !== -1) return -1;
+    if (bIndex !== -1) return 1;
+    return 0;
+  }),
+);

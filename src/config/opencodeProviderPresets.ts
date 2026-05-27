@@ -42,6 +42,20 @@ export const OPENCODE_PRESET_MODEL_VARIANTS: Record<
 > = {
   "@ai-sdk/openai-compatible": [
     {
+      id: "mimo-v2.5-pro",
+      name: "MiMo V2.5 Pro",
+      contextLimit: 1048576,
+      outputLimit: 131072,
+      modalities: { input: ["text"], output: ["text"] },
+    },
+    {
+      id: "mimo-v2.5",
+      name: "MiMo V2.5",
+      contextLimit: 1048576,
+      outputLimit: 131072,
+      modalities: { input: ["text", "image"], output: ["text"] },
+    },
+    {
       id: "MiniMax-M2.7",
       name: "MiniMax M2.7",
       contextLimit: 204800,
@@ -295,6 +309,22 @@ export function getPresetModelDefaults(
   return models.find((m) => m.id === modelId);
 }
 
+function opencodeModelFromVariant(id: string): {
+  name: string;
+  limit?: { context?: number; output?: number };
+  modalities?: { input: string[]; output: string[] };
+} {
+  const defaults = getPresetModelDefaults("@ai-sdk/openai-compatible", id);
+  return {
+    name: defaults?.name ?? id,
+    limit: {
+      context: defaults?.contextLimit,
+      output: defaults?.outputLimit,
+    },
+    modalities: defaults?.modalities,
+  };
+}
+
 export const opencodeProviderPresets: OpenCodeProviderPreset[] = [
   {
     name: "Shengsuanyun",
@@ -318,6 +348,68 @@ export const opencodeProviderPresets: OpenCodeProviderPreset[] = [
     isPartner: true,
     partnerPromotionKey: "shengsuanyun",
     icon: "shengsuanyun",
+    templateValues: {
+      apiKey: {
+        label: "API Key",
+        placeholder: "",
+        editorValue: "",
+      },
+    },
+  },
+  {
+    name: "火山Agentplan",
+    websiteUrl:
+      "https://www.volcengine.com/activity/agentplan?utm_campaign=hw&utm_content=ccswitch&utm_medium=devrel_tool_web&utm_source=OWO&utm_term=ccswitch",
+    apiKeyUrl:
+      "https://www.volcengine.com/activity/agentplan?utm_campaign=hw&utm_content=ccswitch&utm_medium=devrel_tool_web&utm_source=OWO&utm_term=ccswitch",
+    settingsConfig: {
+      npm: "@ai-sdk/openai-compatible",
+      name: "火山Agentplan",
+      options: {
+        baseURL: "https://ark.cn-beijing.volces.com/api/coding/v3",
+        apiKey: "",
+        setCacheKey: true,
+      },
+      models: {
+        "ark-code-latest": { name: "Ark Code Latest" },
+      },
+    },
+    category: "cn_official",
+    isPartner: true,
+    partnerPromotionKey: "volcengine_agentplan",
+    icon: "huoshan",
+    iconColor: "#3370FF",
+    templateValues: {
+      apiKey: {
+        label: "API Key",
+        placeholder: "",
+        editorValue: "",
+      },
+    },
+  },
+  {
+    name: "BytePlus",
+    websiteUrl:
+      "https://www.byteplus.com/en/product/modelark?utm_campaign=hw&utm_content=ccswitch&utm_medium=devrel_tool_web&utm_source=OWO&utm_term=ccswitch",
+    apiKeyUrl:
+      "https://www.byteplus.com/en/product/modelark?utm_campaign=hw&utm_content=ccswitch&utm_medium=devrel_tool_web&utm_source=OWO&utm_term=ccswitch",
+    settingsConfig: {
+      npm: "@ai-sdk/openai-compatible",
+      name: "BytePlus",
+      options: {
+        baseURL: "https://ark.ap-southeast.bytepluses.com/api/coding/v3",
+        apiKey: "",
+        setCacheKey: true,
+      },
+      models: {
+        "ark-code-latest": { name: "Ark Code Latest" },
+      },
+    },
+    category: "cn_official",
+    isPartner: true,
+    partnerPromotionKey: "byteplus",
+    icon: "byteplus",
+    iconColor: "#3370FF",
     templateValues: {
       apiKey: {
         label: "API Key",
@@ -849,7 +941,36 @@ export const opencodeProviderPresets: OpenCodeProviderPreset[] = [
         setCacheKey: true,
       },
       models: {
-        "mimo-v2-pro": { name: "MiMo V2 Pro" },
+        "mimo-v2.5-pro": opencodeModelFromVariant("mimo-v2.5-pro"),
+        "mimo-v2.5": opencodeModelFromVariant("mimo-v2.5"),
+      },
+    },
+    category: "cn_official",
+    icon: "xiaomimimo",
+    iconColor: "#000000",
+    templateValues: {
+      apiKey: {
+        label: "API Key",
+        placeholder: "",
+        editorValue: "",
+      },
+    },
+  },
+  {
+    name: "Xiaomi MiMo Token Plan (China)",
+    websiteUrl: "https://platform.xiaomimimo.com",
+    apiKeyUrl: "https://platform.xiaomimimo.com/#/console/api-keys",
+    settingsConfig: {
+      npm: "@ai-sdk/openai-compatible",
+      name: "Xiaomi MiMo Token Plan (China)",
+      options: {
+        baseURL: "https://token-plan-cn.xiaomimimo.com/v1",
+        apiKey: "",
+        setCacheKey: true,
+      },
+      models: {
+        "mimo-v2.5-pro": opencodeModelFromVariant("mimo-v2.5-pro"),
+        "mimo-v2.5": opencodeModelFromVariant("mimo-v2.5"),
       },
     },
     category: "cn_official",
@@ -1552,3 +1673,23 @@ export const opencodeProviderPresets: OpenCodeProviderPreset[] = [
     isCustomTemplate: true,
   },
 ];
+
+const OPENCODE_PARTNER_PRESET_ORDER = [
+  "Shengsuanyun",
+  "火山Agentplan",
+  "BytePlus",
+  "DouBaoSeed",
+];
+
+opencodeProviderPresets.splice(
+  0,
+  opencodeProviderPresets.length,
+  ...[...opencodeProviderPresets].sort((a, b) => {
+    const aIndex = OPENCODE_PARTNER_PRESET_ORDER.indexOf(a.name);
+    const bIndex = OPENCODE_PARTNER_PRESET_ORDER.indexOf(b.name);
+    if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+    if (aIndex !== -1) return -1;
+    if (bIndex !== -1) return 1;
+    return 0;
+  }),
+);

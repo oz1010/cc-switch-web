@@ -85,11 +85,19 @@ export interface ClaudeDesktopProviderFormProps {
 }
 
 type RouteRow = {
+  id: string;
   route: string;
   model: string;
   displayName: string;
   supports1m: boolean;
 };
+
+let routeRowId = 0;
+
+function createRouteRow(values: Omit<RouteRow, "id">): RouteRow {
+  routeRowId += 1;
+  return { ...values, id: `route-${routeRowId}` };
+}
 
 function envString(
   settingsConfig: Record<string, unknown> | undefined,
@@ -111,12 +119,14 @@ function clonePlainRecord(value: unknown): Record<string, unknown> {
 function initialRouteRows(
   routes: Record<string, ClaudeDesktopModelRoute> | undefined,
 ): RouteRow[] {
-  return Object.entries(routes ?? {}).map(([route, value]) => ({
-    route,
-    model: value.model ?? "",
-    displayName: value.displayName ?? "",
-    supports1m: value.supports1m ?? false,
-  }));
+  return Object.entries(routes ?? {}).map(([route, value]) =>
+    createRouteRow({
+      route,
+      model: value.model ?? "",
+      displayName: value.displayName ?? "",
+      supports1m: value.supports1m ?? false,
+    }),
+  );
 }
 
 function isClaudeSafeRoute(route: string) {
@@ -131,24 +141,27 @@ function defaultRouteRows(
   defaults: ClaudeDesktopDefaultRoute[],
   defaultModel: string,
 ): RouteRow[] {
-  return defaults.map((route, index) => ({
-    route: route.routeId,
-    model: index === 0 ? defaultModel : "",
-    displayName: route.displayName,
-    supports1m: route.supports1m,
-  }));
+  return defaults.map((route, index) =>
+    createRouteRow({
+      route: route.routeId,
+      model: index === 0 ? defaultModel : "",
+      displayName: route.displayName,
+      supports1m: route.supports1m,
+    }),
+  );
 }
 
 function nextRouteRow(current: RouteRow[], defaults: RouteRow[]): RouteRow {
   return (
     defaults.find(
       (route) => !current.some((existing) => existing.route === route.route),
-    ) ?? {
+    ) ??
+    createRouteRow({
       route: "",
       model: "",
       displayName: "",
       supports1m: true,
-    }
+    })
   );
 }
 
@@ -583,7 +596,7 @@ export function ClaudeDesktopProviderForm({
               </div>
               {routes.map((route, index) => (
                 <div
-                  key={`${route.route}-${index}`}
+                  key={route.id}
                   className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_1fr_92px_36px]"
                 >
                   <div className="flex gap-1">
@@ -607,7 +620,7 @@ export function ClaudeDesktopProviderForm({
                     onChange={(event) =>
                       updateRoute(index, { displayName: event.target.value })
                     }
-                    placeholder="Sonnet"
+                    placeholder="DeepSeek V4 Pro"
                   />
                   <label className="flex h-9 items-center gap-2 text-sm text-muted-foreground">
                     <Checkbox
@@ -680,12 +693,12 @@ export function ClaudeDesktopProviderForm({
                     () =>
                       setRoutes((current) => [
                         ...current,
-                        {
+                        createRouteRow({
                           route: "",
                           model: "",
                           displayName: "",
                           supports1m: false,
-                        },
+                        }),
                       ]),
                     t("claudeDesktop.addModel", { defaultValue: "添加模型" }),
                   )}
@@ -695,7 +708,7 @@ export function ClaudeDesktopProviderForm({
                   <div className="space-y-2">
                     {routes.map((route, index) => (
                       <div
-                        key={`${route.route}-${index}`}
+                        key={route.id}
                         className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_92px_36px]"
                       >
                         <div className="flex gap-1">

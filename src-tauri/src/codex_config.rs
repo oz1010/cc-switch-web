@@ -204,6 +204,69 @@ pub fn extract_codex_experimental_bearer_token(config_text: &str) -> Option<Stri
         .or_else(top_level_token)
 }
 
+pub fn remove_codex_experimental_bearer_tokens(config_text: &str) -> Result<String, AppError> {
+    if !config_text.contains("experimental_bearer_token") {
+        return Ok(config_text.to_string());
+    }
+
+    let mut doc = config_text
+        .parse::<DocumentMut>()
+        .map_err(|e| AppError::Message(format!("Invalid Codex config.toml: {e}")))?;
+
+    doc.as_table_mut().remove("experimental_bearer_token");
+
+    if let Some(model_providers) = doc
+        .get_mut("model_providers")
+        .and_then(|item| item.as_table_like_mut())
+    {
+        let provider_keys: Vec<String> = model_providers
+            .iter()
+            .map(|(key, _)| key.to_string())
+            .collect();
+        for provider_key in provider_keys {
+            if let Some(provider_table) = model_providers
+                .get_mut(&provider_key)
+                .and_then(|item| item.as_table_like_mut())
+            {
+                provider_table.remove("experimental_bearer_token");
+            }
+        }
+    }
+
+    Ok(doc.to_string())
+}
+
+fn upsert_codex_experimental_bearer_token(
+    config_text: &str,
+    token: &str,
+) -> Result<String, AppError> {
+    let mut doc = if config_text.trim().is_empty() {
+        DocumentMut::new()
+    } else {
+        config_text
+            .parse::<DocumentMut>()
+            .map_err(|e| AppError::Message(format!("Invalid Codex config.toml: {e}")))?
+    };
+
+    let provider_id =
+        active_codex_model_provider_id(&doc).filter(|id| is_custom_codex_model_provider_id(id));
+
+    if let Some(provider_id) = provider_id {
+        if let Some(provider_table) = doc
+            .get_mut("model_providers")
+            .and_then(|item| item.as_table_like_mut())
+            .and_then(|table| table.get_mut(provider_id.as_str()))
+            .and_then(|item| item.as_table_like_mut())
+        {
+            provider_table.insert("experimental_bearer_token", toml_edit::value(token));
+            return Ok(doc.to_string());
+        }
+    }
+
+    doc["experimental_bearer_token"] = toml_edit::value(token);
+    Ok(doc.to_string())
+}
+
 fn is_custom_codex_model_provider_id(id: &str) -> bool {
     let id = id.trim();
     !id.is_empty()
@@ -456,6 +519,37 @@ pub fn write_codex_live_atomic_with_stable_provider(
         }
         None => write_codex_live_atomic(auth, None),
     }
+}
+
+pub fn write_codex_config_live_with_stable_provider(
+    auth: &Value,
+    config_text_opt: Option<&str>,
+) -> Result<(), AppError> {
+    let config_path = get_codex_config_path();
+    if let Some(parent) = config_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| AppError::io(parent, e))?;
+    }
+
+    let mut config_text = match config_text_opt {
+        Some(config_text) => {
+            let mut settings = serde_json::Map::new();
+            settings.insert("config".to_string(), Value::String(config_text.to_string()));
+            let mut settings = Value::Object(settings);
+            normalize_codex_settings_config_model_provider(&mut settings, None)?;
+            settings
+                .get("config")
+                .and_then(|value| value.as_str())
+                .unwrap_or(config_text)
+                .to_string()
+        }
+        None => String::new(),
+    };
+
+    if let Some(api_key) = extract_codex_api_key(Some(auth), Some(&config_text)) {
+        config_text = upsert_codex_experimental_bearer_token(&config_text, &api_key)?;
+    }
+    validate_config_toml(&config_text)?;
+    write_text_file(&config_path, &config_text)
 }
 
 /// Update a field in Codex config.toml using toml_edit (syntax-preserving).

@@ -158,19 +158,33 @@ impl ConfigService {
             )));
         }
         let cfg_text = settings.get("config").and_then(Value::as_str);
+        let api_key = crate::codex_config::extract_codex_api_key(Some(auth), cfg_text);
 
-        crate::codex_config::write_codex_live_atomic_with_stable_provider(auth, cfg_text)?;
+        crate::codex_config::write_codex_config_live_with_stable_provider(auth, cfg_text)?;
         // 注意：MCP 同步在 v3.7.0 中已通过 McpService 进行，不再在此调用
         // sync_enabled_to_codex 使用旧的 config.mcp.codex 结构，在新架构中为空
         // MCP 的启用/禁用应通过 McpService::toggle_app 进行
 
         let cfg_text_after = crate::codex_config::read_and_validate_codex_config_text()?;
+        let stored_cfg_text =
+            crate::codex_config::remove_codex_experimental_bearer_tokens(&cfg_text_after)?;
         if let Some(manager) = config.get_manager_mut(&AppType::Codex) {
             if let Some(target) = manager.providers.get_mut(provider_id) {
                 if let Some(obj) = target.settings_config.as_object_mut() {
+                    if let Some(api_key) = api_key {
+                        let auth = obj.entry("auth").or_insert_with(|| serde_json::json!({}));
+                        if let Some(auth_obj) = auth.as_object_mut() {
+                            auth_obj.insert(
+                                "OPENAI_API_KEY".to_string(),
+                                serde_json::Value::String(api_key),
+                            );
+                        } else {
+                            *auth = serde_json::json!({ "OPENAI_API_KEY": api_key });
+                        }
+                    }
                     obj.insert(
                         "config".to_string(),
-                        serde_json::Value::String(cfg_text_after),
+                        serde_json::Value::String(stored_cfg_text),
                     );
                 }
             }

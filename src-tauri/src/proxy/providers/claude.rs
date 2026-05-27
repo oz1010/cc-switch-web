@@ -869,7 +869,7 @@ mod tests {
         let adapter = ClaudeAdapter::new();
         let auth = AuthInfo::new("sk-ant-test".to_string(), AuthStrategy::Anthropic);
 
-        let headers = adapter.get_auth_headers(&auth);
+        let headers = adapter.get_auth_headers(&auth).unwrap();
         assert_eq!(headers.len(), 1);
         assert_eq!(headers[0].0.as_str(), "x-api-key");
         assert_eq!(headers[0].1.to_str().unwrap(), "sk-ant-test");
@@ -880,7 +880,7 @@ mod tests {
         let adapter = ClaudeAdapter::new();
         let auth = AuthInfo::new("sk-relay-test".to_string(), AuthStrategy::ClaudeAuth);
 
-        let headers = adapter.get_auth_headers(&auth);
+        let headers = adapter.get_auth_headers(&auth).unwrap();
         assert_eq!(headers.len(), 1);
         assert_eq!(headers[0].0.as_str(), "authorization");
         assert_eq!(headers[0].1.to_str().unwrap(), "Bearer sk-relay-test");
@@ -891,7 +891,7 @@ mod tests {
         let adapter = ClaudeAdapter::new();
         let auth = AuthInfo::new("sk-or-test".to_string(), AuthStrategy::Bearer);
 
-        let headers = adapter.get_auth_headers(&auth);
+        let headers = adapter.get_auth_headers(&auth).unwrap();
         assert_eq!(headers.len(), 1);
         assert_eq!(headers[0].0.as_str(), "authorization");
         assert_eq!(headers[0].1.to_str().unwrap(), "Bearer sk-or-test");

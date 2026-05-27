@@ -625,10 +625,7 @@ impl ProviderAdapter for ClaudeAdapter {
                 // 注意：bearer token 由 forwarder 动态注入到 auth.api_key
                 // ChatGPT-Account-Id 由 forwarder 注入额外 header
                 vec![
-                    (
-                        HeaderName::from_static("authorization"),
-                        hv(&bearer)?,
-                    ),
+                    (HeaderName::from_static("authorization"), hv(&bearer)?),
                     (
                         HeaderName::from_static("originator"),
                         HeaderValue::from_static("cc-switch"),
@@ -639,10 +636,7 @@ impl ProviderAdapter for ClaudeAdapter {
                 // 生成请求追踪 ID
                 let request_id = uuid::Uuid::new_v4().to_string();
                 vec![
-                    (
-                        HeaderName::from_static("authorization"),
-                        hv(&bearer)?,
-                    ),
+                    (HeaderName::from_static("authorization"), hv(&bearer)?),
                     (
                         HeaderName::from_static("editor-version"),
                         HeaderValue::from_static(super::copilot_auth::COPILOT_EDITOR_VERSION),
@@ -681,14 +675,8 @@ impl ProviderAdapter for ClaudeAdapter {
                         HeaderName::from_static("x-vscode-user-agent-library-version"),
                         HeaderValue::from_static("electron-fetch"),
                     ),
-                    (
-                        HeaderName::from_static("x-request-id"),
-                        hv(&request_id)?,
-                    ),
-                    (
-                        HeaderName::from_static("x-agent-task-id"),
-                        hv(&request_id)?,
-                    ),
+                    (HeaderName::from_static("x-request-id"), hv(&request_id)?),
+                    (HeaderName::from_static("x-agent-task-id"), hv(&request_id)?),
                 ]
             }
         })

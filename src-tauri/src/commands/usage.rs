@@ -1,7 +1,7 @@
 //! 使用统计相关命令
 
-use crate::error::AppError;
 use crate::database::Database;
+use crate::error::AppError;
 use crate::services::usage_stats::*;
 #[cfg(feature = "desktop")]
 use crate::store::AppState;

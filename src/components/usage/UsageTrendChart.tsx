@@ -35,7 +35,11 @@ export function UsageTrendChart({
 }: UsageTrendChartProps) {
   const { t, i18n } = useTranslation();
   const { startDate, endDate } = resolveUsageRange(range);
-  const { data: trends, isLoading, error } = useUsageTrends(range, appType, {
+  const {
+    data: trends,
+    isLoading,
+    error,
+  } = useUsageTrends(range, appType, {
     refetchInterval: refreshIntervalMs > 0 ? refreshIntervalMs : false,
   });
 

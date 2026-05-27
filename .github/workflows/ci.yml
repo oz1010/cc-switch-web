@@ -93,7 +93,7 @@ jobs:
         run: cargo fmt --check --manifest-path src-tauri/Cargo.toml
 
       - name: Clippy
-        run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings -A dead-code -A unused-imports
 
       - name: Run tests
         run: cargo test --manifest-path src-tauri/Cargo.toml

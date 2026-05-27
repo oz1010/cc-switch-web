@@ -1369,7 +1369,7 @@ function ProviderFormFull({
           ? localApiFormat
           : appId === "codex" && category !== "official"
             ? localCodexApiFormat
-          : undefined,
+            : undefined,
       apiKeyField:
         appId === "claude" &&
         category !== "official" &&

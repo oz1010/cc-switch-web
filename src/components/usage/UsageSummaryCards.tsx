@@ -20,7 +20,11 @@ export function UsageSummaryCards({
 }: UsageSummaryCardsProps) {
   const { t } = useTranslation();
 
-  const { data: summary, isLoading, error } = useUsageSummary(range, appType, {
+  const {
+    data: summary,
+    isLoading,
+    error,
+  } = useUsageSummary(range, appType, {
     refetchInterval: refreshIntervalMs > 0 ? refreshIntervalMs : false,
   });
 

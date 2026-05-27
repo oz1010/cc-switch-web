@@ -87,6 +87,7 @@ pub use proxy::providers::copilot_auth::{
 };
 pub use proxy::types::{LogConfig, OptimizerConfig, RectifierConfig};
 pub use services::balance::get_balance as fetch_balance;
+pub use services::codex_oauth_models::fetch_models_with_token as fetch_codex_oauth_models_with_token;
 pub use services::coding_plan::get_coding_plan_quota as fetch_coding_plan_quota;
 pub use services::env_checker::{check_env_conflicts, EnvConflict};
 pub use services::env_manager::{delete_env_vars, restore_from_backup, BackupInfo};
@@ -109,7 +110,6 @@ pub use services::subscription::{
     get_subscription_quota as fetch_subscription_quota, query_codex_quota, CredentialStatus,
     SubscriptionQuota,
 };
-pub use services::codex_oauth_models::fetch_models_with_token as fetch_codex_oauth_models_with_token;
 pub use services::usage_stats::{
     DailyStats, LogFilters, ModelStats, PaginatedLogs, ProviderLimitStatus, ProviderStats,
     RequestLogDetail, UsageSummary, UsageSummaryByApp,

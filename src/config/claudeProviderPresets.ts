@@ -72,10 +72,9 @@ export interface ProviderPreset {
   modelsUrl?: string;
 }
 
-function orderPresetsByPartnerPriority<T extends { name: string; isOfficial?: boolean }>(
-  presets: T[],
-  priority: string[],
-): T[] {
+function orderPresetsByPartnerPriority<
+  T extends { name: string; isOfficial?: boolean },
+>(presets: T[], priority: string[]): T[] {
   const priorityIndex = new Map(priority.map((name, index) => [name, index]));
   return [...presets].sort((a, b) => {
     if (a.isOfficial !== b.isOfficial) return a.isOfficial ? -1 : 1;
@@ -166,7 +165,8 @@ export const providerPresets: ProviderPreset[] = [
       "https://www.byteplus.com/en/product/modelark?utm_campaign=hw&utm_content=ccswitch&utm_medium=devrel_tool_web&utm_source=OWO&utm_term=ccswitch",
     settingsConfig: {
       env: {
-        ANTHROPIC_BASE_URL: "https://ark.ap-southeast.bytepluses.com/api/coding",
+        ANTHROPIC_BASE_URL:
+          "https://ark.ap-southeast.bytepluses.com/api/coding",
         ANTHROPIC_AUTH_TOKEN: "",
         ANTHROPIC_MODEL: "ark-code-latest",
         ANTHROPIC_DEFAULT_SONNET_MODEL: "ark-code-latest",

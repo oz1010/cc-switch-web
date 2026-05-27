@@ -48,7 +48,9 @@ export function rebaseOpenClawSuggestedDefaults(
 ): OpenClawSuggestedDefaults {
   const rebase = (model: string): string => {
     const slashIndex = model.indexOf("/");
-    return slashIndex === -1 ? `${providerKey}/${model}` : `${providerKey}${model.slice(slashIndex)}`;
+    return slashIndex === -1
+      ? `${providerKey}/${model}`
+      : `${providerKey}${model.slice(slashIndex)}`;
   };
 
   return {

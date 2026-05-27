@@ -13,7 +13,10 @@ export const hasClaudeOneMMarker = (value: string): boolean =>
 export const stripClaudeOneMMarker = (value: string): string =>
   value.replace(ONE_M_MARKER_PATTERN, "").trim();
 
-export const setClaudeOneMMarker = (value: string, enabled: boolean): string => {
+export const setClaudeOneMMarker = (
+  value: string,
+  enabled: boolean,
+): string => {
   const stripped = stripClaudeOneMMarker(value);
   return enabled && stripped ? `${stripped}[1M]` : stripped;
 };

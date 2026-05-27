@@ -589,33 +589,31 @@ impl ProviderAdapter for ClaudeAdapter {
         base
     }
 
-    fn get_auth_headers(&self, auth: &AuthInfo) -> Vec<(http::HeaderName, http::HeaderValue)> {
+    fn get_auth_headers(
+        &self,
+        auth: &AuthInfo,
+    ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyError> {
+        use super::adapter::auth_header_value as hv;
         use http::{HeaderName, HeaderValue};
         // 注意：anthropic-version 由 forwarder.rs 统一处理（透传客户端值或设置默认值）
         let bearer = format!("Bearer {}", auth.api_key);
-        match auth.strategy {
+        Ok(match auth.strategy {
             AuthStrategy::Anthropic => {
-                vec![(
-                    HeaderName::from_static("x-api-key"),
-                    HeaderValue::from_str(&auth.api_key).unwrap(),
-                )]
+                vec![(HeaderName::from_static("x-api-key"), hv(&auth.api_key)?)]
             }
             AuthStrategy::ClaudeAuth | AuthStrategy::Bearer => {
-                vec![(
-                    HeaderName::from_static("authorization"),
-                    HeaderValue::from_str(&bearer).unwrap(),
-                )]
+                vec![(HeaderName::from_static("authorization"), hv(&bearer)?)]
             }
             AuthStrategy::Google => vec![(
                 HeaderName::from_static("x-goog-api-key"),
-                HeaderValue::from_str(&auth.api_key).unwrap(),
+                hv(&auth.api_key)?,
             )],
             AuthStrategy::GoogleOAuth => {
                 let token = auth.access_token.as_ref().unwrap_or(&auth.api_key);
                 vec![
                     (
                         HeaderName::from_static("authorization"),
-                        HeaderValue::from_str(&format!("Bearer {token}")).unwrap(),
+                        hv(&format!("Bearer {token}"))?,
                     ),
                     (
                         HeaderName::from_static("x-goog-api-client"),
@@ -629,7 +627,7 @@ impl ProviderAdapter for ClaudeAdapter {
                 vec![
                     (
                         HeaderName::from_static("authorization"),
-                        HeaderValue::from_str(&bearer).unwrap(),
+                        hv(&bearer)?,
                     ),
                     (
                         HeaderName::from_static("originator"),
@@ -643,7 +641,7 @@ impl ProviderAdapter for ClaudeAdapter {
                 vec![
                     (
                         HeaderName::from_static("authorization"),
-                        HeaderValue::from_str(&bearer).unwrap(),
+                        hv(&bearer)?,
                     ),
                     (
                         HeaderName::from_static("editor-version"),
@@ -685,15 +683,15 @@ impl ProviderAdapter for ClaudeAdapter {
                     ),
                     (
                         HeaderName::from_static("x-request-id"),
-                        HeaderValue::from_str(&request_id).unwrap(),
+                        hv(&request_id)?,
                     ),
                     (
                         HeaderName::from_static("x-agent-task-id"),
-                        HeaderValue::from_str(&request_id).unwrap(),
+                        hv(&request_id)?,
                     ),
                 ]
             }
-        }
+        })
     }
 
     fn needs_transform(&self, provider: &Provider) -> bool {

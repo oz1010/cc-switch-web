@@ -5,6 +5,19 @@ interface UseModelStateProps {
   onConfigChange: (config: string) => void;
 }
 
+const ONE_M_MARKER_PATTERN = /\s*\[1m\]\s*$/i;
+
+export const hasClaudeOneMMarker = (value: string): boolean =>
+  ONE_M_MARKER_PATTERN.test(value);
+
+export const stripClaudeOneMMarker = (value: string): string =>
+  value.replace(ONE_M_MARKER_PATTERN, "").trim();
+
+export const setClaudeOneMMarker = (value: string, enabled: boolean): string => {
+  const stripped = stripClaudeOneMMarker(value);
+  return enabled && stripped ? `${stripped}[1M]` : stripped;
+};
+
 /**
  * Parse model values from settings config JSON
  */
@@ -30,10 +43,30 @@ function parseModelsFromConfig(settingsConfig: string) {
       typeof env.ANTHROPIC_DEFAULT_OPUS_MODEL === "string"
         ? env.ANTHROPIC_DEFAULT_OPUS_MODEL
         : model || small;
+    const haikuName =
+      typeof env.ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME === "string"
+        ? env.ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME
+        : stripClaudeOneMMarker(haiku);
+    const sonnetName =
+      typeof env.ANTHROPIC_DEFAULT_SONNET_MODEL_NAME === "string"
+        ? env.ANTHROPIC_DEFAULT_SONNET_MODEL_NAME
+        : stripClaudeOneMMarker(sonnet);
+    const opusName =
+      typeof env.ANTHROPIC_DEFAULT_OPUS_MODEL_NAME === "string"
+        ? env.ANTHROPIC_DEFAULT_OPUS_MODEL_NAME
+        : stripClaudeOneMMarker(opus);
 
-    return { model, haiku, sonnet, opus };
+    return { model, haiku, haikuName, sonnet, sonnetName, opus, opusName };
   } catch {
-    return { model: "", haiku: "", sonnet: "", opus: "" };
+    return {
+      model: "",
+      haiku: "",
+      haikuName: "",
+      sonnet: "",
+      sonnetName: "",
+      opus: "",
+      opusName: "",
+    };
   }
 }
 
@@ -52,11 +85,20 @@ export function useModelState({
   const [defaultHaikuModel, setDefaultHaikuModel] = useState(
     () => parseModelsFromConfig(settingsConfig).haiku,
   );
+  const [defaultHaikuModelName, setDefaultHaikuModelName] = useState(
+    () => parseModelsFromConfig(settingsConfig).haikuName,
+  );
   const [defaultSonnetModel, setDefaultSonnetModel] = useState(
     () => parseModelsFromConfig(settingsConfig).sonnet,
   );
+  const [defaultSonnetModelName, setDefaultSonnetModelName] = useState(
+    () => parseModelsFromConfig(settingsConfig).sonnetName,
+  );
   const [defaultOpusModel, setDefaultOpusModel] = useState(
     () => parseModelsFromConfig(settingsConfig).opus,
+  );
+  const [defaultOpusModelName, setDefaultOpusModelName] = useState(
+    () => parseModelsFromConfig(settingsConfig).opusName,
   );
 
   const isUserEditingRef = useRef(false);
@@ -104,11 +146,26 @@ export function useModelState({
         typeof env.ANTHROPIC_DEFAULT_OPUS_MODEL === "string"
           ? env.ANTHROPIC_DEFAULT_OPUS_MODEL
           : model || small;
+      const haikuName =
+        typeof env.ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME === "string"
+          ? env.ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME
+          : stripClaudeOneMMarker(haiku);
+      const sonnetName =
+        typeof env.ANTHROPIC_DEFAULT_SONNET_MODEL_NAME === "string"
+          ? env.ANTHROPIC_DEFAULT_SONNET_MODEL_NAME
+          : stripClaudeOneMMarker(sonnet);
+      const opusName =
+        typeof env.ANTHROPIC_DEFAULT_OPUS_MODEL_NAME === "string"
+          ? env.ANTHROPIC_DEFAULT_OPUS_MODEL_NAME
+          : stripClaudeOneMMarker(opus);
 
       setClaudeModel(model || "");
       setDefaultHaikuModel(haiku || "");
+      setDefaultHaikuModelName(haikuName || "");
       setDefaultSonnetModel(sonnet || "");
+      setDefaultSonnetModelName(sonnetName || "");
       setDefaultOpusModel(opus || "");
+      setDefaultOpusModelName(opusName || "");
     } catch {
       // ignore
     }
@@ -119,8 +176,11 @@ export function useModelState({
       field:
         | "ANTHROPIC_MODEL"
         | "ANTHROPIC_DEFAULT_HAIKU_MODEL"
+        | "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME"
         | "ANTHROPIC_DEFAULT_SONNET_MODEL"
-        | "ANTHROPIC_DEFAULT_OPUS_MODEL",
+        | "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME"
+        | "ANTHROPIC_DEFAULT_OPUS_MODEL"
+        | "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
       value: string,
     ) => {
       isUserEditingRef.current = true;
@@ -128,9 +188,15 @@ export function useModelState({
       if (field === "ANTHROPIC_MODEL") setClaudeModel(value);
       if (field === "ANTHROPIC_DEFAULT_HAIKU_MODEL")
         setDefaultHaikuModel(value);
+      if (field === "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME")
+        setDefaultHaikuModelName(value);
       if (field === "ANTHROPIC_DEFAULT_SONNET_MODEL")
         setDefaultSonnetModel(value);
+      if (field === "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME")
+        setDefaultSonnetModelName(value);
       if (field === "ANTHROPIC_DEFAULT_OPUS_MODEL") setDefaultOpusModel(value);
+      if (field === "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME")
+        setDefaultOpusModelName(value);
 
       try {
         const currentConfig = latestConfigRef.current
@@ -164,10 +230,16 @@ export function useModelState({
     setClaudeModel,
     defaultHaikuModel,
     setDefaultHaikuModel,
+    defaultHaikuModelName,
+    setDefaultHaikuModelName,
     defaultSonnetModel,
     setDefaultSonnetModel,
+    defaultSonnetModelName,
+    setDefaultSonnetModelName,
     defaultOpusModel,
     setDefaultOpusModel,
+    defaultOpusModelName,
+    setDefaultOpusModelName,
     handleModelChange,
   };
 }

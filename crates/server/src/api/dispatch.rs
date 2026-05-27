@@ -51,6 +51,7 @@ rpc_business_methods!(
     "copilot_get_usage_for_account",
     "get_subscription_quota",
     "get_codex_oauth_quota",
+    "get_codex_oauth_models",
     "get_coding_plan_quota",
     "get_balance",
     "test_api_endpoints",
@@ -63,6 +64,7 @@ rpc_business_methods!(
     "get_stream_check_config",
     "save_stream_check_config",
     "get_usage_summary",
+    "get_usage_summary_by_app",
     "get_usage_trends",
     "get_provider_stats",
     "get_model_stats",
@@ -187,6 +189,8 @@ rpc_business_methods!(
     "extract_common_config_snippet",
     "get_skills_migration_result",
     "get_tool_versions",
+    "run_tool_lifecycle_action",
+    "probe_tool_installations",
     "remove_provider_from_live_config",
     "import_mcp_from_apps",
     "import_openclaw_providers_from_live",
@@ -805,6 +809,17 @@ pub async fn dispatch_command(
             serde_json::to_value(quota).map_err(|e| RpcError::internal_error(e.to_string()))
         }
 
+        "get_codex_oauth_models" => {
+            let account_id = params
+                .get("accountId")
+                .or_else(|| params.get("account_id"))
+                .and_then(|v| v.as_str());
+            let models = cc_switch_core::get_codex_oauth_models(account_id)
+                .await
+                .map_err(RpcError::app_error)?;
+            serde_json::to_value(models).map_err(|e| RpcError::internal_error(e.to_string()))
+        }
+
         "get_coding_plan_quota" => {
             let base_url = get_str_param(params, &["baseUrl", "base_url"])?;
             let api_key = get_str_param(params, &["apiKey", "api_key"])?;
@@ -978,6 +993,16 @@ pub async fn dispatch_command(
             let app_type = get_optional_str_param(params, &["appType", "app_type"])?;
 
             let summary = cc_switch_core::get_usage_summary(core, start_date, end_date, app_type)
+                .map_err(RpcError::app_error)?;
+
+            serde_json::to_value(summary).map_err(|e| RpcError::internal_error(e.to_string()))
+        }
+
+        "get_usage_summary_by_app" => {
+            let start_date = get_optional_i64_param(params, &["startDate", "start_date"])?;
+            let end_date = get_optional_i64_param(params, &["endDate", "end_date"])?;
+
+            let summary = cc_switch_core::get_usage_summary_by_app(core, start_date, end_date)
                 .map_err(RpcError::app_error)?;
 
             serde_json::to_value(summary).map_err(|e| RpcError::internal_error(e.to_string()))
@@ -2255,6 +2280,51 @@ pub async fn dispatch_command(
                 .await
                 .map_err(RpcError::app_error)?;
             Ok(result)
+        }
+
+        "run_tool_lifecycle_action" => {
+            let tools = params
+                .get("tools")
+                .cloned()
+                .ok_or_else(|| RpcError::invalid_params("missing 'tools' field"))
+                .and_then(|value| {
+                    serde_json::from_value(value).map_err(|e| {
+                        RpcError::invalid_params(format!("invalid 'tools' value: {e}"))
+                    })
+                })?;
+            let action = get_str_param(params, &["action"])?.to_string();
+            let wsl_shell_by_tool = params
+                .get("wslShellByTool")
+                .or_else(|| params.get("wsl_shell_by_tool"))
+                .cloned()
+                .map(
+                    serde_json::from_value::<
+                        HashMap<String, cc_switch_core::WslShellPreferenceInput>,
+                    >,
+                )
+                .transpose()
+                .map_err(|e| {
+                    RpcError::invalid_params(format!("invalid 'wslShellByTool' value: {e}"))
+                })?;
+            cc_switch_core::run_tool_lifecycle_action(tools, action, wsl_shell_by_tool)
+                .await
+                .map_err(RpcError::app_error)?;
+            Ok(Value::Null)
+        }
+
+        "probe_tool_installations" => {
+            let tools = params
+                .get("tools")
+                .cloned()
+                .ok_or_else(|| RpcError::invalid_params("missing 'tools' field"))
+                .and_then(|value| {
+                    serde_json::from_value(value).map_err(|e| {
+                        RpcError::invalid_params(format!("invalid 'tools' value: {e}"))
+                    })
+                })?;
+            cc_switch_core::probe_tool_installations(tools)
+                .await
+                .map_err(RpcError::app_error)
         }
 
         "remove_provider_from_live_config" => {

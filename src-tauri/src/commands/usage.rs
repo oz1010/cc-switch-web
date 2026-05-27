@@ -1,8 +1,7 @@
 //! 使用统计相关命令
 
-use crate::database::Database;
 use crate::error::AppError;
-#[cfg(feature = "desktop")]
+use crate::database::Database;
 use crate::services::usage_stats::*;
 #[cfg(feature = "desktop")]
 use crate::store::AppState;
@@ -21,6 +20,17 @@ pub fn get_usage_summary(
     state
         .db
         .get_usage_summary(start_date, end_date, app_type.as_deref())
+}
+
+/// 获取按 app_type 拆分的使用量汇总
+#[cfg(feature = "desktop")]
+#[tauri::command]
+pub fn get_usage_summary_by_app(
+    state: State<'_, AppState>,
+    start_date: Option<i64>,
+    end_date: Option<i64>,
+) -> Result<Vec<UsageSummaryByApp>, AppError> {
+    state.db.get_usage_summary_by_app(start_date, end_date)
 }
 
 /// 获取每日趋势
@@ -145,7 +155,6 @@ pub fn upsert_model_pricing(
     cache_creation_cost: String,
 ) -> Result<(), AppError> {
     let conn = crate::database::lock_conn!(db.conn);
-
     conn.execute(
         "INSERT OR REPLACE INTO model_pricing (
             model_id, display_name, input_cost_per_million, output_cost_per_million,
@@ -161,6 +170,10 @@ pub fn upsert_model_pricing(
         ],
     )
     .map_err(|e| AppError::Database(format!("更新模型定价失败: {e}")))?;
+
+    if let Err(e) = db.backfill_missing_usage_costs_for_model(&model_id) {
+        log::warn!("模型定价更新后回填历史用量成本失败 (model_id={model_id}): {e}");
+    }
 
     Ok(())
 }

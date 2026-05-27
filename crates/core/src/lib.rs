@@ -38,6 +38,7 @@ pub use cc_switch::{
     SkillBackupEntry, SkillMigrationResult, SkillRepo, SkillStorageLocation, SkillUpdateInfo,
     SkillsMigrationPayload, SkillsShSearchResult, StreamCheckConfig, StreamCheckResult,
     StreamCheckService, SubscriptionQuota, UniversalProvider, UsageResult, UsageSummary,
+    UsageSummaryByApp,
     WebDavSyncSettings, WslShellPreferenceInput, WEB_COMPAT_TAURI_COMMANDS,
 };
 
@@ -391,6 +392,24 @@ pub async fn get_codex_oauth_quota(account_id: Option<&str>) -> Result<Subscript
         "Codex OAuth access token expired or rejected. Please re-login via cc-switch.",
     )
     .await)
+}
+
+pub async fn get_codex_oauth_models(account_id: Option<&str>) -> Result<Vec<FetchedModel>, String> {
+    let manager = cc_switch::CodexOAuthManager::new(cc_switch::get_app_config_dir());
+    let resolved = match account_id.map(str::trim).filter(|id| !id.is_empty()) {
+        Some(id) => Some(id.to_string()),
+        None => manager.default_account_id().await,
+    };
+    let Some(id) = resolved else {
+        return Err("No ChatGPT account available".to_string());
+    };
+
+    let token = manager
+        .get_valid_token_for_account(&id)
+        .await
+        .map_err(|e| format!("Codex OAuth token unavailable: {e}"))?;
+
+    cc_switch::fetch_codex_oauth_models_with_token(&token, &id).await
 }
 
 pub async fn get_coding_plan_quota(
@@ -1125,6 +1144,17 @@ pub fn get_usage_summary(
     ctx.app_state()
         .db
         .get_usage_summary(start_date, end_date, app_type)
+        .map_err(|e| e.to_string())
+}
+
+pub fn get_usage_summary_by_app(
+    ctx: &CoreContext,
+    start_date: Option<i64>,
+    end_date: Option<i64>,
+) -> Result<Vec<UsageSummaryByApp>, String> {
+    ctx.app_state()
+        .db
+        .get_usage_summary_by_app(start_date, end_date)
         .map_err(|e| e.to_string())
 }
 
@@ -2381,6 +2411,19 @@ pub async fn get_tool_versions(
 ) -> Result<serde_json::Value, String> {
     let versions = cc_switch::get_tool_versions(tools, wsl_shell_by_tool).await?;
     serde_json::to_value(versions).map_err(|e| e.to_string())
+}
+
+pub async fn run_tool_lifecycle_action(
+    tools: Vec<String>,
+    action: String,
+    wsl_shell_by_tool: Option<HashMap<String, WslShellPreferenceInput>>,
+) -> Result<(), String> {
+    cc_switch::run_tool_lifecycle_action(tools, action, wsl_shell_by_tool).await
+}
+
+pub async fn probe_tool_installations(tools: Vec<String>) -> Result<serde_json::Value, String> {
+    let report = cc_switch::probe_tool_installations(tools).await?;
+    serde_json::to_value(report).map_err(|e| e.to_string())
 }
 
 /// 获取会话列表

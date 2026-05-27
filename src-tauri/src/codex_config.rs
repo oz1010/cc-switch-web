@@ -159,6 +159,51 @@ fn active_codex_model_provider_id(doc: &DocumentMut) -> Option<String> {
         .map(str::to_string)
 }
 
+pub fn extract_codex_auth_api_key(auth: &Value) -> Option<String> {
+    auth.get("OPENAI_API_KEY")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|key| !key.is_empty())
+        .map(str::to_string)
+}
+
+pub fn extract_codex_api_key(auth: Option<&Value>, config_text: Option<&str>) -> Option<String> {
+    auth.and_then(extract_codex_auth_api_key)
+        .or_else(|| config_text.and_then(extract_codex_experimental_bearer_token))
+}
+
+pub fn extract_codex_experimental_bearer_token(config_text: &str) -> Option<String> {
+    if !config_text.contains("experimental_bearer_token") {
+        return None;
+    }
+
+    let doc = config_text.parse::<DocumentMut>().ok()?;
+    let provider_id = active_codex_model_provider_id(&doc);
+
+    let top_level_token = || {
+        doc.get("experimental_bearer_token")
+            .and_then(|item| item.as_str())
+            .map(str::trim)
+            .filter(|token| !token.is_empty())
+            .map(str::to_string)
+    };
+
+    let Some(provider_id) = provider_id.filter(|id| is_custom_codex_model_provider_id(id)) else {
+        return top_level_token();
+    };
+
+    doc.get("model_providers")
+        .and_then(|item| item.as_table())
+        .and_then(|table| table.get(provider_id.as_str()))
+        .and_then(|item| item.as_table())
+        .and_then(|table| table.get("experimental_bearer_token"))
+        .and_then(|item| item.as_str())
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+        .map(str::to_string)
+        .or_else(top_level_token)
+}
+
 fn is_custom_codex_model_provider_id(id: &str) -> bool {
     let id = id.trim();
     !id.is_empty()

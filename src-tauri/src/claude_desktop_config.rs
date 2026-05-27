@@ -22,6 +22,7 @@ const GATEWAY_TOKEN_SETTING_KEY: &str = "claude_desktop_gateway_token";
 const CLAUDE_DESKTOP_PROXY_PREFIX: &str = "/claude-desktop";
 const DEFAULT_CREATED_AT: &str = "2024-01-01T00:00:00Z";
 const ONE_M_CONTEXT_SUFFIX: &str = " [1M]";
+pub const ONE_M_CONTEXT_MARKER: &str = "[1m]";
 
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "camelCase")]

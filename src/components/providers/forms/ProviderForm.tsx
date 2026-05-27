@@ -15,6 +15,9 @@ import type {
   ProviderTestConfig,
   ClaudeApiFormat,
   ClaudeApiKeyField,
+  CodexApiFormat,
+  CodexCatalogModel,
+  CodexChatReasoning,
 } from "@/types";
 import {
   providerPresets,
@@ -48,6 +51,9 @@ import type { UniversalProviderPreset } from "@/config/universalProviderPresets"
 import {
   applyTemplateValues,
   hasApiKeyField,
+  extractCodexWireApi,
+  setCodexModelName as setCodexModelNameInConfig,
+  setCodexWireApi,
 } from "@/utils/providerConfigUtils";
 import { mergeProviderMeta } from "@/utils/providerMetaUtils";
 import { getCodexCustomTemplate } from "@/config/codexTemplates";
@@ -114,6 +120,90 @@ type PresetEntry = {
     | OpenCodeProviderPreset
     | OpenClawProviderPreset
     | HermesProviderPreset;
+};
+
+const codexApiFormatFromWireApi = (
+  wireApi: string | undefined,
+): CodexApiFormat | undefined => {
+  switch (wireApi?.trim().toLowerCase()) {
+    case "chat":
+    case "chat_completions":
+    case "chat-completions":
+    case "openai_chat":
+    case "openai-chat":
+      return "openai_chat";
+    case "responses":
+    case "openai_responses":
+    case "openai-responses":
+      return "openai_responses";
+    default:
+      return undefined;
+  }
+};
+
+export const normalizeCodexCatalogModelsForSave = (
+  models: CodexCatalogModel[],
+): CodexCatalogModel[] => {
+  const seen = new Set<string>();
+  const normalized: CodexCatalogModel[] = [];
+
+  for (const item of models) {
+    const model = item.model.trim();
+    if (!model || seen.has(model)) continue;
+    seen.add(model);
+
+    const displayName = item.displayName?.trim();
+    const rawContextWindow = String(item.contextWindow ?? "").replace(
+      /[^\d]/g,
+      "",
+    );
+    const contextWindow = rawContextWindow
+      ? Number.parseInt(rawContextWindow, 10)
+      : undefined;
+
+    normalized.push({
+      model,
+      ...(displayName ? { displayName } : {}),
+      ...(contextWindow && contextWindow > 0 ? { contextWindow } : {}),
+    });
+  }
+
+  return normalized;
+};
+
+const normalizeCodexChatReasoningForSave = (
+  value?: CodexChatReasoning,
+): CodexChatReasoning | undefined => {
+  const supportsEffort = value?.supportsEffort === true;
+  const supportsThinking = value?.supportsThinking === true || supportsEffort;
+  const hasExplicitConfig = value && Object.keys(value).length > 0;
+
+  if (!supportsThinking && !supportsEffort) {
+    return hasExplicitConfig
+      ? {
+          supportsThinking: false,
+          supportsEffort: false,
+          thinkingParam: "none",
+          effortParam: "none",
+          outputFormat: value?.outputFormat ?? "auto",
+        }
+      : undefined;
+  }
+
+  return {
+    supportsThinking,
+    supportsEffort,
+    thinkingParam: supportsThinking
+      ? (value?.thinkingParam ?? "thinking")
+      : "none",
+    effortParam: supportsEffort
+      ? (value?.effortParam ?? "reasoning_effort")
+      : "none",
+    effortValueMode: supportsEffort
+      ? (value?.effortValueMode ?? "passthrough")
+      : undefined,
+    outputFormat: value?.outputFormat ?? "auto",
+  };
 };
 
 export interface ProviderFormProps {
@@ -405,6 +495,10 @@ function ProviderFormFull({
   const [codexFastMode, setCodexFastMode] = useState<boolean>(
     () => initialData?.meta?.codexFastMode ?? false,
   );
+  const [codexChatReasoning, setCodexChatReasoning] =
+    useState<CodexChatReasoning>(
+      () => initialData?.meta?.codexChatReasoning ?? {},
+    );
 
   const {
     codexAuth,
@@ -412,14 +506,36 @@ function ProviderFormFull({
     codexApiKey,
     codexBaseUrl,
     codexModelName,
+    codexCatalogModels,
     codexAuthError,
     setCodexAuth,
+    setCodexConfig,
+    setCodexCatalogModels,
     handleCodexApiKeyChange,
     handleCodexBaseUrlChange,
     handleCodexModelNameChange,
     handleCodexConfigChange: originalHandleCodexConfigChange,
     resetCodexConfig,
   } = useCodexConfigState({ initialData });
+
+  const [localCodexApiFormat, setLocalCodexApiFormat] =
+    useState<CodexApiFormat>(() => {
+      if (initialData?.meta?.apiFormat === "openai_chat") {
+        return "openai_chat";
+      }
+      if (initialData?.meta?.apiFormat === "openai_responses") {
+        return "openai_responses";
+      }
+      return (
+        codexApiFormatFromWireApi(
+          extractCodexWireApi(
+            typeof initialData?.settingsConfig?.config === "string"
+              ? initialData.settingsConfig.config
+              : "",
+          ),
+        ) ?? "openai_responses"
+      );
+    });
 
   const { configError: codexConfigError, debouncedValidate } =
     useCodexTomlValidation();
@@ -432,10 +548,23 @@ function ProviderFormFull({
     [originalHandleCodexConfigChange, debouncedValidate],
   );
 
+  const handleCodexApiFormatChange = useCallback(
+    (format: CodexApiFormat) => {
+      setLocalCodexApiFormat(format);
+      setCodexConfig((prev) => {
+        const updated = setCodexWireApi(prev, "responses");
+        debouncedValidate(updated);
+        return updated;
+      });
+    },
+    [setCodexConfig, debouncedValidate],
+  );
+
   useEffect(() => {
     if (appId === "codex" && !initialData && selectedPresetId === "custom") {
       const template = getCodexCustomTemplate();
       resetCodexConfig(template.auth, template.config);
+      setCodexChatReasoning({});
     }
   }, [appId, initialData, selectedPresetId, resetCodexConfig]);
 
@@ -1030,10 +1159,31 @@ function ProviderFormFull({
     if (appId === "codex") {
       try {
         const authJson = JSON.parse(codexAuth);
+        let normalizedCodexConfig =
+          category !== "official" && (codexConfig ?? "").trim()
+            ? setCodexWireApi(codexConfig ?? "", "responses")
+            : (codexConfig ?? "");
+        const normalizedCatalogModels =
+          category !== "official" && localCodexApiFormat === "openai_chat"
+            ? normalizeCodexCatalogModelsForSave(codexCatalogModels)
+            : [];
+        if (normalizedCatalogModels.length > 0) {
+          normalizedCodexConfig = setCodexModelNameInConfig(
+            normalizedCodexConfig,
+            normalizedCatalogModels[0].model,
+          );
+        }
         const configObj = {
           auth: authJson,
-          config: codexConfig ?? "",
+          config: normalizedCodexConfig,
+        } as {
+          auth: unknown;
+          config: string;
+          modelCatalog?: { models: CodexCatalogModel[] };
         };
+        if (normalizedCatalogModels.length > 0) {
+          configObj.modelCatalog = { models: normalizedCatalogModels };
+        }
         settingsConfig = JSON.stringify(configObj);
       } catch (err) {
         settingsConfig = values.settingsConfig.trim();
@@ -1200,6 +1350,12 @@ function ProviderFormFull({
           ? selectedGitHubAccountId
           : undefined,
       codexFastMode: isCodexOauthProvider ? codexFastMode : undefined,
+      codexChatReasoning:
+        appId === "codex" &&
+        category !== "official" &&
+        localCodexApiFormat === "openai_chat"
+          ? normalizeCodexChatReasoningForSave(codexChatReasoning)
+          : undefined,
       testConfig: testConfig.enabled ? testConfig : undefined,
       costMultiplier: pricingConfig.enabled
         ? pricingConfig.costMultiplier
@@ -1211,6 +1367,8 @@ function ProviderFormFull({
       apiFormat:
         appId === "claude" && category !== "official"
           ? localApiFormat
+          : appId === "codex" && category !== "official"
+            ? localCodexApiFormat
           : undefined,
       apiKeyField:
         appId === "claude" &&
@@ -1352,6 +1510,11 @@ function ProviderFormFull({
       if (appId === "codex") {
         const template = getCodexCustomTemplate();
         resetCodexConfig(template.auth, template.config);
+        setCodexChatReasoning({});
+        setLocalCodexApiFormat(
+          codexApiFormatFromWireApi(extractCodexWireApi(template.config)) ??
+            "openai_responses",
+        );
       }
       if (appId === "gemini") {
         resetGeminiConfig({}, {});
@@ -1387,7 +1550,13 @@ function ProviderFormFull({
       const auth = preset.auth ?? {};
       const config = preset.config ?? "";
 
-      resetCodexConfig(auth, config);
+      resetCodexConfig(auth, config, preset.modelCatalog ?? []);
+      setCodexChatReasoning(preset.codexChatReasoning ?? {});
+      setLocalCodexApiFormat(
+        preset.apiFormat ??
+          codexApiFormatFromWireApi(extractCodexWireApi(config)) ??
+          "openai_responses",
+      );
 
       form.reset({
         name: preset.nameKey ? t(preset.nameKey) : preset.name,
@@ -1853,6 +2022,12 @@ function ProviderFormFull({
               shouldShowModelField={category !== "official"}
               modelName={codexModelName}
               onModelNameChange={handleCodexModelNameChange}
+              apiFormat={localCodexApiFormat}
+              onApiFormatChange={handleCodexApiFormatChange}
+              codexChatReasoning={codexChatReasoning}
+              onCodexChatReasoningChange={setCodexChatReasoning}
+              catalogModels={codexCatalogModels}
+              onCatalogModelsChange={setCodexCatalogModels}
               speedTestEndpoints={speedTestEndpoints}
             />
           )}

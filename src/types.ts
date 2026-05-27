@@ -137,6 +137,45 @@ export interface ClaudeDesktopModelRoute {
   supports1m?: boolean;
 }
 
+export interface CodexCatalogModel {
+  model: string;
+  displayName?: string;
+  contextWindow?: number | string;
+}
+
+export type CodexChatThinkingParam =
+  | "none"
+  | "thinking"
+  | "enable_thinking"
+  | "reasoning_split";
+
+export type CodexChatEffortParam =
+  | "none"
+  | "reasoning_effort"
+  | "reasoning.effort";
+
+export type CodexChatEffortValueMode =
+  | "passthrough"
+  | "low_high"
+  | "deepseek"
+  | "openrouter";
+
+export type CodexChatReasoningOutputFormat =
+  | "auto"
+  | "reasoning_content"
+  | "reasoning"
+  | "reasoning_details"
+  | "think_tags";
+
+export interface CodexChatReasoning {
+  supportsThinking?: boolean;
+  supportsEffort?: boolean;
+  thinkingParam?: CodexChatThinkingParam;
+  effortParam?: CodexChatEffortParam;
+  effortValueMode?: CodexChatEffortValueMode;
+  outputFormat?: CodexChatReasoningOutputFormat;
+}
+
 // 供应商元数据（字段名与后端一致，保持 snake_case）
 export interface ProviderMeta {
   // 自定义端点：以 URL 为键，值为端点信息
@@ -181,6 +220,7 @@ export interface ProviderMeta {
   promptCacheKey?: string;
   // Codex OAuth FAST mode: injects service_tier="priority" on ChatGPT Codex requests
   codexFastMode?: boolean;
+  codexChatReasoning?: CodexChatReasoning;
   // 供应商类型（用于识别 Copilot 等特殊供应商）
   providerType?: string;
   // GitHub Copilot 关联账号 ID（旧字段，保留兼容读取）
@@ -203,6 +243,8 @@ export type ClaudeApiFormat =
   | "openai_chat"
   | "openai_responses"
   | "gemini_native";
+
+export type CodexApiFormat = "openai_responses" | "openai_chat";
 
 // Claude 认证字段类型
 export type ClaudeApiKeyField = "ANTHROPIC_AUTH_TOKEN" | "ANTHROPIC_API_KEY";
@@ -293,7 +335,7 @@ export interface Settings {
   // User has confirmed the common config first-run notice
   commonConfigConfirmed?: boolean;
   // 首选语言（可选，默认中文）
-  language?: "en" | "zh" | "ja";
+  language?: "en" | "zh" | "zh-TW" | "ja";
 
   // 主页面显示的应用（默认全部显示）
   visibleApps?: VisibleApps;

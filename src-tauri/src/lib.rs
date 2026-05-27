@@ -109,9 +109,10 @@ pub use services::subscription::{
     get_subscription_quota as fetch_subscription_quota, query_codex_quota, CredentialStatus,
     SubscriptionQuota,
 };
+pub use services::codex_oauth_models::fetch_models_with_token as fetch_codex_oauth_models_with_token;
 pub use services::usage_stats::{
     DailyStats, LogFilters, ModelStats, PaginatedLogs, ProviderLimitStatus, ProviderStats,
-    RequestLogDetail, UsageSummary,
+    RequestLogDetail, UsageSummary, UsageSummaryByApp,
 };
 pub use services::webdav_sync::{
     check_connection as webdav_check_connection, download as webdav_download,
@@ -320,6 +321,7 @@ pub const WEB_COMPAT_TAURI_COMMANDS: &[&str] = &[
     "testUsageScript",
     "get_subscription_quota",
     "get_codex_oauth_quota",
+    "get_codex_oauth_models",
     "get_coding_plan_quota",
     "get_balance",
     "get_mcp_config",
@@ -407,6 +409,8 @@ pub const WEB_COMPAT_TAURI_COMMANDS: &[&str] = &[
     "extract_common_config_snippet",
     "get_skills_migration_result",
     "get_tool_versions",
+    "run_tool_lifecycle_action",
+    "probe_tool_installations",
     "remove_provider_from_live_config",
     "import_mcp_from_apps",
     "import_openclaw_providers_from_live",
@@ -486,6 +490,7 @@ pub const WEB_COMPAT_TAURI_COMMANDS: &[&str] = &[
     "get_auto_failover_enabled",
     "set_auto_failover_enabled",
     "get_usage_summary",
+    "get_usage_summary_by_app",
     "get_usage_trends",
     "get_provider_stats",
     "get_model_stats",
@@ -1596,6 +1601,7 @@ pub fn run() {
             // subscription quota
             commands::get_subscription_quota,
             commands::get_codex_oauth_quota,
+            commands::get_codex_oauth_models,
             commands::get_coding_plan_quota,
             commands::get_balance,
             // New MCP via config.json (SSOT)
@@ -1721,6 +1727,7 @@ pub fn run() {
             commands::set_auto_failover_enabled,
             // Usage statistics
             commands::get_usage_summary,
+            commands::get_usage_summary_by_app,
             commands::get_usage_trends,
             commands::get_provider_stats,
             commands::get_model_stats,
@@ -1745,6 +1752,8 @@ pub fn run() {
             commands::delete_sessions,
             commands::launch_session_terminal,
             commands::get_tool_versions,
+            commands::run_tool_lifecycle_action,
+            commands::probe_tool_installations,
             // Provider terminal
             commands::open_provider_terminal,
             // Universal Provider management

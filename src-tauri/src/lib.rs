@@ -2028,6 +2028,20 @@ pub async fn cleanup_before_exit(app_handle: &tauri::AppHandle) {
 /// 则自动启动代理服务并接管对应应用的 Live 配置。
 #[cfg(feature = "desktop")]
 async fn restore_proxy_state_on_startup(state: &store::AppState) {
+    // 从 settings.json 读取路由总开关配置，若为 true 则自动启动代理服务器
+    let proxy_enabled_in_settings = crate::settings::get_settings().proxy_enabled;
+    if proxy_enabled_in_settings {
+        log::info!("settings.proxy_enabled=true，自动启动代理服务器...");
+        match state.proxy_service.start().await {
+            Ok(info) => {
+                log::info!("✓ 代理服务器已自动启动: {}:{}", info.address, info.port);
+            }
+            Err(e) => {
+                log::error!("✗ 自动启动代理服务器失败: {e}");
+            }
+        }
+    }
+
     // 收集需要恢复接管的应用列表（从 proxy_config.enabled 读取）
     let mut apps_to_restore = Vec::new();
     for app_type in ["claude", "codex", "gemini"] {
